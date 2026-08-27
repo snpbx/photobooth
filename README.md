@@ -195,3 +195,4 @@ first slot's aspect so people can see what will be trimmed.
 See `SETUP.txt` for the operator-facing guide that ships inside the DMG.
 # photobooth-mac
 # photobooth-mac
+# photobooth-mac
