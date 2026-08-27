@@ -1,0 +1,1577 @@
+import Foundation
+import AppKit
+import SwiftUI
+import Combine
+
+/// Owns the session state machine and wires the services together.
+/// Every transition happens here so the UI only ever renders `state`.
+///
+/// The guest booth and the operator console are two independent windows driven by
+/// this one controller, so the operator can watch the booth on a second display
+/// while working in Admin.
+@MainActor
+final class BoothController: ObservableObject {
+
+    // MARK: Published surface
+
+    @Published private(set) var state: BoothState = .idle
+    @Published private(set) var boothWindowOpen = false
+    @Published private(set) var adminWindowVisible = true
+    @Published private(set) var cameraState: CameraState = .disconnected
+    @Published private(set) var liveFrame: NSImage?
+    @Published private(set) var shotPreview: NSImage?
+    @Published private(set) var currentSession: SessionRecord?
+    @Published private(set) var sessionPrintImage: NSImage?
+    @Published var banner: BannerMessage?
+    @Published private(set) var detectedCameras: [String] = []
+    @Published private(set) var isPrintBusy = false
+    /// Shot numbers the operator has marked for a retake, by clicking their
+    /// number in Admin. Drained after the run, before the print is built.
+    @Published private(set) var retakeQueue: Set<Int> = []
+    /// QR code for the finished session's album page, built once per session.
+    @Published private(set) var sessionQRImage: NSImage?
+    /// QR code for the operator's own link — Instagram, a website — when the
+    /// finish screen is set to show one.
+    @Published private(set) var brandQRImage: NSImage?
+    /// True while the finish screen is waiting for somebody to press the button.
+    @Published private(set) var awaitingContinue = false
+    /// True when the print for the finished session is built but deliberately
+    /// not sent yet: with the finish screen holding, the same press that starts
+    /// the next group is what releases their sheet to the printer.
+    @Published private(set) var pendingPrint = false
+    /// The shot number currently being re-taken, so the booth can say so for the
+    /// whole cycle rather than only during the "RETAKE" card.
+    @Published private(set) var retakingShot: Int?
+
+    struct BannerMessage: Identifiable, Equatable {
+        enum Kind { case info, warning, error }
+        let id = UUID()
+        let kind: Kind
+        let text: String
+        var tint: Color {
+            switch kind {
+            case .info: return VHS.amber
+            case .warning: return .orange
+            case .error: return .red
+            }
+        }
+    }
+
+    // MARK: Services
+
+    let settingsService: SettingsService
+    let storage: PhotoStorageService
+    let printer: PrinterService
+    let uploader: UploadService
+    let trigger: TriggerService
+    let log = Log.shared
+
+    private var camera: CameraBackendService?
+    private var activeBackend: CameraBackend?
+    private var sessionTask: Task<Void, Never>?
+    private var finishHoldTask: Task<Void, Never>?
+    private var retakeCurrentRequested = false
+    private var cancels = Set<AnyCancellable>()
+    private var detectTimer: Timer?
+
+    var settings: AppSettings { settingsService.settings }
+
+    // MARK: Init
+
+    init() {
+        let s = SettingsService()
+        settingsService = s
+        storage = PhotoStorageService()
+        printer = PrinterService()
+        uploader = UploadService()
+        trigger = TriggerService()
+
+        storage.configure(rootOverride: s.settings.rootPathOverride)
+        storage.reload()
+        printer.configure(printerName: s.settings.printerName, borderless: s.settings.borderless)
+        printer.shouldPoll = { [weak self] in
+            guard let self else { return false }
+            return self.adminWindowVisible || self.state.isSessionActive
+        }
+        printer.startMonitoring()
+        uploader.configure(s.settings)
+
+        log.info("Photobooth launched — root \(storage.root.path)")
+
+        // dropFirst: the initial value is already applied above, and letting it
+        // through would race a second camera connect against the one below.
+        s.$settings
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] new in self?.applySettings(new) }
+            .store(in: &cancels)
+
+        wireUploader()
+        uploader.start()
+
+        // The physical button. Deliberately wired last: nothing it can fire is
+        // meaningful until the services above are up.
+        trigger.onPress = { [weak self] in self?.triggerPressed() }
+        trigger.configure(s.settings)
+
+        rebuildCamera(for: s.settings.cameraBackend)
+        startDetectPolling()
+    }
+
+    // MARK: Events
+
+    /// The event new sessions are filed under. Falls back to the most recent
+    /// event so a booth that was set up yesterday still works today.
+    var activeEvent: EventRecord? {
+        let wanted = settings.activeEventID
+        if !wanted.isEmpty, let e = storage.event(wanted) { return e }
+        return storage.events.first { !$0.archived }
+    }
+
+    var canStartSession: Bool { cameraState.isReady && activeEvent != nil }
+
+    func setActiveEvent(_ id: String) {
+        settingsService.settings.activeEventID = id
+        if let e = storage.event(id) {
+            log.info("Active event set to \(e.id) — \(e.name)")
+        }
+    }
+
+    @discardableResult
+    func createEvent(name: String, client: String, venue: String, date: Date, notes: String) -> EventRecord? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            show(.warning, "Give the event a name first.")
+            return nil
+        }
+        do {
+            let e = try storage.createEvent(name: trimmed, client: client, venue: venue, date: date, notes: notes)
+            setActiveEvent(e.id)
+            show(.info, "Event “\(e.name)” created and made active.")
+            return e
+        } catch {
+            show(.error, error.localizedDescription)
+            return nil
+        }
+    }
+
+    func updateEvent(_ e: EventRecord) {
+        storage.persist(event: e)
+    }
+
+    func deleteEvent(_ e: EventRecord) {
+        storage.deleteEvent(e)
+        if settings.activeEventID == e.id {
+            settingsService.settings.activeEventID = storage.events.first?.id ?? ""
+        }
+    }
+
+    // MARK: Uploads
+
+    private func wireUploader() {
+        uploader.resolveFiles = { [weak self] eventID, sessionID in
+            guard let self else { return nil }
+            guard let rec = self.storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
+            else { return nil }
+            let event = self.storage.event(eventID) ?? EventRecord.unfiled
+            return (event, rec, self.storage.directory(for: rec))
+        }
+        uploader.onSessionUploaded = { [weak self] eventID, sessionID in
+            guard let self else { return }
+            guard var rec = self.storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
+            else { return }
+            rec.uploadState = .uploaded
+            rec.uploadedAt = Date()
+            self.storage.persist(rec)
+            if self.currentSession?.id == rec.id {
+                self.currentSession = rec
+                // The guests may still be standing at the booth: the moment the
+                // photographs are online, the code they can scan appears.
+                if case .complete = self.state, self.sessionQRImage == nil {
+                    self.sessionQRImage = self.makeQR(for: rec)
+                }
+            }
+        }
+        uploader.publishToPages = { [weak self] eventID, sessionID in
+            guard let self else { throw PagesError.noRepo }
+            if self.settings.galleryHost == .cloudinary {
+                try await self.publishToCloudinary(eventID: eventID, sessionID: sessionID)
+            } else {
+                try await self.publishToPages(eventID: eventID, sessionID: sessionID)
+            }
+        }
+        uploader.pagesReachable = { [weak self] in
+            guard let self else { return .failure(PagesError.noRepo) }
+            if self.settings.galleryHost == .cloudinary {
+                guard let cloud = self.cloudinary else { return .failure(CloudinaryError.notConfigured) }
+                do { return .success("Cloudinary (\(try await cloud.check()))") }
+                catch { return .failure(error) }
+            }
+            guard let pub = self.pagesPublisher() else {
+                return .failure(PagesError.noRepo)
+            }
+            return await Task.detached(priority: .utility) { () -> Result<String, Error> in
+                do {
+                    _ = try pub.canReachRemote()
+                    return .success("GitHub Pages")
+                } catch { return .failure(error) }
+            }.value
+        }
+        uploader.onSessionFailed = { [weak self] eventID, sessionID, message in
+            guard let self else { return }
+            guard var rec = self.storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
+            else { return }
+            rec.uploadState = .failed
+            rec.lastError = message
+            self.storage.persist(rec)
+        }
+    }
+
+    /// Adds a session to the upload queue. Safe with no internet: the queue is on
+    /// disk and drains whenever the site is next reachable.
+    func queueUpload(_ rec: SessionRecord) {
+        guard settings.uploadEnabled else { return }
+        var s = rec
+        s.uploadState = .queued
+        storage.persist(s)
+        if currentSession?.id == s.id { currentSession = s }
+        uploader.enqueue(eventID: rec.eventID, sessionID: rec.id)
+    }
+
+    func retryUploads() {
+        uploader.uploadNow()
+        show(.info, uploader.pendingCount == 0
+             ? "Nothing waiting to upload."
+             : "Retrying \(uploader.pendingCount) session(s).")
+    }
+
+    func checkGallerySite() {
+        Task { @MainActor in
+            let ok = await self.uploader.checkReachability()
+            self.show(ok ? .info : .warning, self.uploader.reachability.label)
+        }
+    }
+
+    private func applySettings(_ new: AppSettings) {
+        storage.configure(rootOverride: new.rootPathOverride)
+        printer.configure(printerName: new.printerName, borderless: new.borderless)
+        uploader.configure(new)
+        trigger.configure(new)
+        if new.cameraBackend != activeBackend {
+            rebuildCamera(for: new.cameraBackend)
+        }
+        if let dslr = camera as? DSLRCameraService {
+            dslr.setFPS(new.liveViewFPS)
+            dslr.setKeepOnCard(new.keepOriginalsOnCard)
+        }
+        if let cam = camera as? WebcamCameraService {
+            cam.setPreferredDevice(new.webcamUniqueID)
+            cam.setFPS(new.liveViewFPS)
+        }
+        (camera as? DemoCameraService)?.setFPS(new.liveViewFPS)
+        updateLiveViewDesire(using: new)
+    }
+
+    // MARK: Camera wiring
+
+    private func rebuildCamera(for backend: CameraBackend) {
+        // Detach first: the outgoing backend has work in flight on its own queue,
+        // and a late callback would otherwise report its status as the new one's.
+        camera?.onState = nil
+        camera?.onFrame = nil
+        camera?.stopLiveView()
+        camera?.disconnect()
+        liveFrame = nil
+        cameraState = .connecting
+
+        let made: CameraBackendService
+        switch backend {
+        case .dslr:
+            let d = DSLRCameraService(fps: settings.liveViewFPS)
+            d.setKeepOnCard(settings.keepOriginalsOnCard)
+            made = d
+        case .webcam:
+            let w = WebcamCameraService(uniqueID: settings.webcamUniqueID)
+            w.setFPS(settings.liveViewFPS)
+            made = w
+        case .demo:
+            made = DemoCameraService(fps: settings.liveViewFPS)
+        }
+        made.onState = { [weak self] s in
+            guard let self else { return }
+            self.cameraState = s
+            if case .disconnected = s, self.state.isSessionActive {
+                self.abortSession(reason: "The camera was disconnected.")
+            }
+            if case .error(let m) = s, self.state.isSessionActive {
+                self.abortSession(reason: m)
+            }
+        }
+        made.onFrame = { [weak self] img in
+            guard let self, self.wantsLiveView else { return }
+            self.liveFrame = img
+        }
+        camera = made
+        activeBackend = backend
+        detectedCameras = []
+        log.info("Camera backend set to \(backend.title)")
+        made.connect()
+        refreshDetectedCameras()
+    }
+
+    func connectCamera() {
+        guard let camera else { return }
+        camera.connect()
+        updateLiveViewDesire()
+    }
+
+    func disconnectCamera() {
+        camera?.stopLiveView()
+        camera?.disconnect()
+        liveFrame = nil
+    }
+
+    private func startDetectPolling() {
+        refreshDetectedCameras()
+        detectTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.detectTick() }
+        }
+    }
+
+    /// A USB bus scan is not free, so it only runs when it could change something:
+    /// the camera is missing, and somebody is looking at the console. Once
+    /// connected, the backend's own watchdog notices an unplugged cable.
+    private func detectTick() {
+        guard !cameraState.isReady else { return }
+        guard adminWindowVisible || state.isSessionActive else { return }
+        refreshDetectedCameras()
+    }
+
+    func refreshDetectedCameras() {
+        switch activeBackend {
+        case .dslr:
+            (camera as? DSLRCameraService)?.detectedCameras { [weak self] cams in
+                guard let self else { return }
+                self.detectedCameras = cams
+                // Auto-reconnect when the cable comes back and we are not mid-session.
+                if !cams.isEmpty, !self.cameraState.isReady, !self.state.isSessionActive {
+                    if case .connecting = self.cameraState {} else { self.camera?.connect() }
+                }
+            }
+        case .webcam:
+            detectedCameras = WebcamCameraService.availableDevices().map(\.localizedName)
+        case .demo:
+            detectedCameras = ["Generated test pattern"]
+        case .none:
+            detectedCameras = []
+        }
+    }
+
+    /// Live view runs while the operator is watching Admin, or while a session is
+    /// in flight — never on an unattended idle screen, so the camera stays cool
+    /// between guests.
+    /// Whether live frames are wanted at all. Frames already in flight land a
+    /// moment after the camera is told to stop, and one of those arriving late
+    /// is exactly how a stopped preview leaves somebody's face frozen on screen.
+    private var wantsLiveView = false
+
+    /// `using:` matters more than it looks. Settings arrive through a @Published
+    /// publisher, which fires on *will*Set — during that call `settings` still
+    /// reads the previous value, so deciding from it would act on the setting the
+    /// operator just changed away from and not act again until something else
+    /// happened to re-evaluate.
+    private func updateLiveViewDesire(using incoming: AppSettings? = nil) {
+        guard let camera else { return }
+        let cfg = incoming ?? settings
+        // Idle preview only while the booth window is actually open: a DSLR held
+        // in live view is burning its battery and warming its sensor, and there
+        // is no reason to pay that while the guest screen is closed.
+        let idlePreview = cfg.idleLiveView && boothWindowOpen && !state.isSessionActive
+        let want = cfg.liveViewEnabled && (adminWindowVisible || state.isSessionActive || idlePreview)
+        wantsLiveView = want
+        if want {
+            camera.startLiveView()
+        } else {
+            camera.stopLiveView()
+            // Without this the last frame stays on screen: a guest frozen on the
+            // idle display long after the camera stopped.
+            liveFrame = nil
+        }
+    }
+
+    // MARK: Window coordination
+    //
+    // AppDelegate owns the NSWindows and installs these hooks at launch; the UI
+    // calls them without needing to know about AppKit.
+
+    var openBoothWindow: ((Bool) -> Void)?     // Bool = also enter full screen
+    var closeBoothWindow: (() -> Void)?
+    var focusAdminWindow: (() -> Void)?
+
+    func noteBoothWindow(open: Bool) {
+        guard boothWindowOpen != open else { return }
+        boothWindowOpen = open
+        log.info(open ? "Booth window opened" : "Booth window closed")
+        updateLiveViewDesire()
+    }
+
+    func noteAdminWindow(visible: Bool) {
+        guard adminWindowVisible != visible else { return }
+        adminWindowVisible = visible
+        updateLiveViewDesire()
+    }
+
+    func showBooth(fullScreen: Bool? = nil) {
+        openBoothWindow?(fullScreen ?? settings.fullScreenOnLaunch)
+    }
+
+    func hideBooth() { closeBoothWindow?() }
+    func showAdmin() { focusAdminWindow?() }
+
+    // MARK: - Session state machine
+
+    func startSession() {
+        guard !state.isSessionActive else { return }
+        guard cameraState.isReady else {
+            show(.error, "Camera is not ready — \(cameraState.label)")
+            return
+        }
+        // Every session belongs to a client event, so photographs never pile into
+        // one undifferentiated folder.
+        guard let event = activeEvent else {
+            show(.warning, "Create an event first — Admin › Event › New Event.")
+            return
+        }
+        do { try storage.preflight(eventID: event.id) }
+        catch {
+            show(.error, error.localizedDescription)
+            log.error("Preflight failed: \(error.localizedDescription)")
+            return
+        }
+
+        let layout = settings.layout
+        let rec: SessionRecord
+        do {
+            rec = try storage.createSession(eventID: event.id, layout: layout, copies: settings.copies)
+        } catch {
+            show(.error, error.localizedDescription)
+            return
+        }
+
+        currentSession = rec
+        sessionPrintImage = nil
+        sessionQRImage = nil
+        shotPreview = nil
+        retakeCurrentRequested = false
+        retakeQueue = []
+        awaitingContinue = false
+        retakingShot = nil
+        finishHoldTask?.cancel()
+        state = .starting
+        updateLiveViewDesire()
+
+        sessionTask = Task { [weak self] in await self?.runSession(layout: layout) }
+    }
+
+    private func runSession(layout: PrintLayout) async {
+        let total = layout.photoCount
+        // Give live view a beat to spin up (the 6D lifts its mirror on the first frame).
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        if Task.isCancelled { return }
+
+        var shot = 1
+        while shot <= total {
+            if Task.isCancelled { return }
+
+            switch await performShot(shot, of: total, replacing: false) {
+            case .failed:      return
+            case .retakeAgain: continue        // same shot number, round again
+            case .done:        break
+            }
+
+            // NEXT_PHOTO
+            if shot < total {
+                state = .interval(shot: shot, of: total)
+                try? await Task.sleep(nanoseconds: UInt64(max(0, settings.shotIntervalSeconds) * 1_000_000_000))
+            }
+            shot += 1
+        }
+
+        if Task.isCancelled { return }
+        // Anything the operator picked out by number while the run was going on.
+        guard await runRetakePass(total: total) else { return }
+        if Task.isCancelled { return }
+        await finishSession()
+    }
+
+    private enum ShotOutcome { case done, retakeAgain, failed }
+
+    /// One countdown → capture → save → review cycle.
+    ///
+    /// `replacing` re-shoots a photo that already exists at this number: the old
+    /// frame is kept on disk under a `.retake-` name and the new one takes its
+    /// place, so the print is rebuilt from the shot the guests actually wanted.
+    private func performShot(_ shot: Int, of total: Int, replacing: Bool) async -> ShotOutcome {
+        retakingShot = replacing ? shot : nil
+        defer { retakingShot = nil }
+
+        if replacing {
+            state = .retaking(shot: shot, of: total)
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            if Task.isCancelled { return .failed }
+        }
+
+        // COUNTDOWN
+        var remaining = max(1, settings.countdownSeconds)
+        while remaining > 0 {
+            if Task.isCancelled { return .failed }
+            state = .countdown(shot: shot, of: total, remaining: remaining)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            remaining -= 1
+        }
+
+        // CAPTURING
+        if Task.isCancelled { return .failed }
+        state = .capturing(shot: shot, of: total)
+        var captured: Data
+        do {
+            guard let camera else { throw CameraError.notConnected }
+            captured = try await camera.capturePhoto()
+        } catch {
+            log.error("Shot \(shot) failed: \(error.localizedDescription)")
+            finishFailed(error.localizedDescription)
+            return .failed
+        }
+
+        // Mirror before saving, so the file, the on-screen review and the print
+        // all match the mirrored preview the guest just posed against.
+        if settings.mirrorImages {
+            let dpi = settings.dpi
+            let source = captured
+            if let flipped = await Task.detached(priority: .userInitiated, operation: {
+                LayoutRenderer.mirroredJPEG(source, dpi: dpi)
+            }).value {
+                captured = flipped
+            }
+        }
+
+        // SAVE — before anything else touches the workflow.
+        guard var session = currentSession else { return .failed }
+        do {
+            let photo = replacing
+                ? try storage.replacePhoto(jpeg: captured, index: shot, in: session)
+                : try storage.savePhoto(jpeg: captured, index: shot, in: session)
+            if let i = session.photos.firstIndex(where: { $0.index == shot }) {
+                session.photos[i] = photo
+            } else {
+                session.photos.append(photo)
+            }
+            session.photos.sort { $0.index < $1.index }
+            if replacing { session.retakenShots.append(shot) }
+            currentSession = session
+            storage.persist(session)
+            camera?.didPersistLastCapture()
+        } catch {
+            log.error("Could not save shot \(shot): \(error.localizedDescription)")
+            finishFailed(error.localizedDescription)
+            return .failed
+        }
+
+        shotPreview = NSImage(data: captured)
+
+        // PHOTO_PREVIEW
+        state = .photoPreview(shot: shot, of: total)
+        try? await Task.sleep(nanoseconds: UInt64(max(0, settings.previewSeconds) * 1_000_000_000))
+        if Task.isCancelled { return .failed }
+        shotPreview = nil
+
+        // A retake asked for while this very photo was on screen is honoured now
+        // rather than being deferred to the end — the guests are still posed.
+        if retakeCurrentRequested {
+            retakeCurrentRequested = false
+            retakeQueue.remove(shot)
+            return .retakeAgain
+        }
+        retakeQueue.remove(shot)
+        return .done
+    }
+
+    /// Re-shoots every number still sitting in the retake queue.
+    /// Returns false if a shot failed and the session has already been ended.
+    @discardableResult
+    private func runRetakePass(total: Int) async -> Bool {
+        while let next = retakeQueue.sorted().first {
+            if Task.isCancelled { return false }
+            retakeQueue.remove(next)
+            // Only re-shoot numbers that were actually taken; a queued number for a
+            // shot the run never reached is simply dropped.
+            guard currentSession?.photos.contains(where: { $0.index == next }) == true else { continue }
+            switch await performShot(next, of: total, replacing: true) {
+            case .failed:      return false
+            case .retakeAgain: retakeQueue.insert(next)
+            case .done:        break
+            }
+        }
+        return true
+    }
+
+    private func finishSession() async {
+        guard var session = currentSession else { return }
+        state = .generatingPrint
+        camera?.stopLiveView()
+
+        let dir = storage.directory(for: session)
+        let urls = session.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
+        let layout = session.layout
+        let snapshot = settings
+        let payload = printQRPayload(for: session)
+
+        let result: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                return .success(try LayoutRenderer.renderPrint(photos: urls, layout: layout,
+                                                               settings: snapshot, qrPayload: payload))
+            } catch { return .failure(error) }
+        }.value
+
+        switch result {
+        case .failure(let e):
+            log.error("Layout render failed for \(session.id): \(e.localizedDescription)")
+            session.lastError = e.localizedDescription
+            session.finishedAt = Date()
+            storage.persist(session)
+            currentSession = session
+            finishFailed("Could not build the print. Your photographs are saved.")
+            return
+        case .success(let data):
+            do {
+                session.printFileName = try storage.savePrint(data, in: session)
+            } catch {
+                log.error("Could not save print for \(session.id): \(error.localizedDescription)")
+            }
+            sessionPrintImage = NSImage(data: data)
+            session.finishedAt = Date()
+            storage.persist(session)
+            currentSession = session
+        }
+
+        // With the finish screen holding for a press, the print holds with it.
+        // The guests look at the QR card, press once when they are done, and the
+        // sheet starts coming out as they walk away — one press, print and reset.
+        // Nothing is printed for a group that never presses.
+        let deferPrint = settings.autoPrint && settings.holdFinishUntilPress
+        if settings.autoPrint && !deferPrint {
+            state = .printing
+            sendToPrinter(session: session, allowRepeat: false)
+        }
+
+        queueUpload(session)
+        sessionQRImage = makeQR(for: session)
+        brandQRImage = settings.showQRCode && qrPayloads(for: session).brand != nil ? makeBrandQR() : nil
+        let waitingOnUpload = settings.qrRequiresUpload && session.uploadState != .uploaded
+        if settings.showQRCode, sessionQRImage == nil, brandQRImage == nil, !waitingOnUpload {
+            // Asked for a code and got none: better a warning on the console than
+            // a finish screen that quietly drops the handout.
+            show(.warning, qrTargetProblem ?? "No QR code could be built for this session.")
+        }
+        pendingPrint = deferPrint
+
+        state = .complete
+        let retaken = session.retakenShots.isEmpty
+            ? ""
+            : " (retook \(session.retakenShots.map(String.init).joined(separator: ", ")))"
+        log.info("Session \(session.id) complete — \(session.photos.count) photos\(retaken)")
+
+        holdFinishScreen()
+    }
+
+    /// The finish screen either times out on its own or waits for the button.
+    ///
+    /// Waiting is the default: guests need a moment to read the QR code, and the
+    /// next group should start when they are ready rather than when a timer says
+    /// so. A jam-guard still exists — an unattended booth left showing somebody
+    /// else's photographs is worse than a booth that resets itself.
+    private func holdFinishScreen() {
+        finishHoldTask?.cancel()
+        let hold = settings.holdFinishUntilPress
+        awaitingContinue = hold
+        let seconds = hold
+            ? max(0, settings.finishHoldTimeoutSeconds)
+            : max(1, settings.completeScreenSeconds)
+        guard seconds > 0 else { return }        // 0 with hold on = wait forever
+
+        finishHoldTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            guard case .complete = self.state else { return }
+            if hold {
+                self.log.info("Finish screen timed out after \(Int(seconds))s — returning to idle")
+                if self.pendingPrint {
+                    // Nobody pressed, so nobody is there to take the sheet.
+                    // The print image is saved — Admin › Gallery can send it.
+                    let id = self.currentSession?.id ?? "session"
+                    self.log.warn("Print held back for \(id) — no button press")
+                    self.show(.warning, "Nobody pressed — \(id) was not printed.")
+                }
+            }
+            self.returnToIdle()
+        }
+    }
+
+    private func sendToPrinter(session: SessionRecord, allowRepeat: Bool) {
+        guard let name = session.printFileName else { return }
+        if currentSession?.id == session.id { pendingPrint = false }
+        var s = session
+        let url = storage.directory(for: session).appendingPathComponent(name)
+        do {
+            let job = try printer.submit(fileURL: url,
+                                         sessionID: session.id,
+                                         copies: max(1, session.copies),
+                                         allowRepeat: allowRepeat)
+            s.printStatus = .queued
+            s.printJobID = job.id
+            s.lastError = nil
+        } catch {
+            s.printStatus = .failed
+            s.lastError = error.localizedDescription
+            show(.error, error.localizedDescription)
+            log.error("Print failed for \(session.id): \(error.localizedDescription)")
+        }
+        storage.persist(s)
+        if currentSession?.id == s.id { currentSession = s }
+    }
+
+    // MARK: Operator actions
+
+    func cancelSession() {
+        guard state.isSessionActive else { return }
+        sessionTask?.cancel()
+        sessionTask = nil
+        if let s = currentSession {
+            var rec = s
+            rec.finishedAt = Date()
+            rec.lastError = "Cancelled by operator"
+            storage.persist(rec)
+            log.warn("Session \(s.id) cancelled — \(s.photos.count) photo(s) kept on disk")
+        }
+        returnToIdle()
+    }
+
+    private func abortSession(reason: String) {
+        sessionTask?.cancel()
+        sessionTask = nil
+        finishFailed(reason)
+    }
+
+    private func finishFailed(_ reason: String) {
+        if let s = currentSession {
+            var rec = s
+            rec.finishedAt = Date()
+            rec.lastError = reason
+            storage.persist(rec)
+        }
+        state = .failed(reason)
+        show(.error, reason)
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self, case .failed = self.state else { return }
+            self.returnToIdle()
+        }
+    }
+
+    func restartSession() {
+        cancelSession()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            self.startSession()
+        }
+    }
+
+    // MARK: Retakes
+    //
+    // Every photograph in a session carries a number, and Admin shows those
+    // numbers as buttons. Clicking one marks that shot to be taken again — while
+    // the run is going on, or afterwards from the finish screen, which is when
+    // guests usually notice somebody blinked.
+
+    /// The number of shots this session is meant to end up with.
+    var shotCount: Int { (currentSession?.layout ?? settings.layout).photoCount }
+
+    /// True when clicking a number would do something useful right now.
+    var canRetake: Bool {
+        guard let s = currentSession, !s.photos.isEmpty else { return state.isSessionActive }
+        return state.isSessionActive || isFinished
+    }
+
+    private var isFinished: Bool {
+        if case .complete = state { return true }
+        if case .failed = state { return true }
+        return false
+    }
+
+    /// What clicking a number in Admin does.
+    ///
+    /// During a run it is a toggle: mark a number, change your mind, unmark it.
+    /// On the finish screen there is nothing to queue behind, so the click
+    /// re-shoots straight away — which is the case that matters, because that is
+    /// when a guest says somebody blinked.
+    func toggleRetake(shot number: Int) {
+        if retakeQueue.contains(number) {
+            retakeQueue.remove(number)
+            if case .photoPreview(let s, _) = state, s == number { retakeCurrentRequested = false }
+            show(.info, "Photo \(number) will be kept.")
+            return
+        }
+        requestRetake(shot: number)
+    }
+
+    func requestRetake(shot number: Int) {
+        guard number >= 1, number <= shotCount else { return }
+
+        if state.isSessionActive {
+            // Already being re-shot: adding it again would put the booth into a
+            // loop of retaking the same photograph.
+            if retakingShot == number {
+                show(.info, "Photo \(number) is being taken again right now.")
+                return
+            }
+            // If this is the photo on screen, do it immediately — the guests have
+            // not moved yet.
+            if case .photoPreview(let s, _) = state, s == number {
+                retakeQueue.insert(number)
+                retakeCurrentRequested = true
+                show(.info, "Retaking photo \(number) now…")
+                return
+            }
+            guard currentSession?.photos.contains(where: { $0.index == number }) == true else {
+                show(.info, "Photo \(number) has not been taken yet.")
+                return
+            }
+            retakeQueue.insert(number)
+            show(.info, "Photo \(number) queued — it is taken again after the last shot.")
+            return
+        }
+
+        guard isFinished, let session = currentSession else {
+            show(.warning, "No session to retake. Start one first.")
+            return
+        }
+        guard session.photos.contains(where: { $0.index == number }) else {
+            show(.warning, "This session has no photo \(number).")
+            return
+        }
+        guard cameraState.isReady else {
+            show(.error, "Camera is not ready — \(cameraState.label)")
+            return
+        }
+        retakeQueue.insert(number)
+        resumeForRetakes()
+    }
+
+    /// Reopens a finished session to re-shoot the queued numbers, then rebuilds
+    /// the print and sends it again.
+    func resumeForRetakes() {
+        guard !state.isSessionActive, !retakeQueue.isEmpty else { return }
+        guard let session = currentSession else { return }
+        guard cameraState.isReady else {
+            show(.error, "Camera is not ready — \(cameraState.label)")
+            return
+        }
+        finishHoldTask?.cancel()
+        awaitingContinue = false
+        pendingPrint = false
+        sessionPrintImage = nil
+        sessionQRImage = nil
+        brandQRImage = nil
+        let total = session.layout.photoCount
+        let numbers = retakeQueue.sorted().map(String.init).joined(separator: ", ")
+        log.info("Session \(session.id) reopened to retake photo(s) \(numbers)")
+        state = .starting
+        updateLiveViewDesire()
+
+        sessionTask = Task { [weak self] in
+            guard let self else { return }
+            guard await self.runRetakePass(total: total) else { return }
+            if Task.isCancelled { return }
+            await self.finishSession()
+        }
+    }
+
+    /// Kept for the menu bar and the older keyboard shortcut: retakes whichever
+    /// photo is on screen.
+    func retakeCurrentPhoto() {
+        guard let p = progress else {
+            show(.warning, "No photo on screen to retake.")
+            return
+        }
+        requestRetake(shot: p.shot)
+    }
+
+    func returnToIdle() {
+        sessionTask?.cancel()
+        sessionTask = nil
+        finishHoldTask?.cancel()
+        finishHoldTask = nil
+        state = .idle
+        shotPreview = nil
+        retakeCurrentRequested = false
+        retakeQueue = []
+        awaitingContinue = false
+        pendingPrint = false
+        retakingShot = nil
+        sessionQRImage = nil
+        brandQRImage = nil
+        storage.refreshFreeSpace()
+        updateLiveViewDesire()
+    }
+
+    // MARK: Printing actions
+
+    func reprint(_ rec: SessionRecord) {
+        guard !isPrintBusy else { return }
+        guard rec.printFileName != nil else {
+            show(.warning, "That session has no print image. Rebuild it first.")
+            return
+        }
+        isPrintBusy = true
+        sendToPrinter(session: rec, allowRepeat: true)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            self.isPrintBusy = false
+        }
+    }
+
+    func printCurrentSession() {
+        guard let s = currentSession else { return }
+        reprint(s)
+    }
+
+    /// Rebuilds print.jpg from the originals — used after a layout change or a failed render.
+    func rebuildPrint(for rec: SessionRecord) {
+        let dir = storage.directory(for: rec)
+        let urls = rec.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
+        let layout = rec.layout
+        let snapshot = settings
+        let payload = printQRPayload(for: rec)
+        Task { @MainActor in
+            let result: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(try LayoutRenderer.renderPrint(photos: urls, layout: layout,
+                                                                   settings: snapshot, qrPayload: payload))
+                } catch { return .failure(error) }
+            }.value
+            switch result {
+            case .success(let data):
+                var s = rec
+                s.printFileName = try? self.storage.savePrint(data, in: rec)
+                self.storage.persist(s)
+                self.show(.info, "Print image rebuilt for \(rec.id)")
+            case .failure(let e):
+                self.show(.error, e.localizedDescription)
+            }
+        }
+    }
+
+    func testPrint() {
+        guard !isPrintBusy else { return }
+        guard let data = printer.testPrintImage(settings: settings) else {
+            show(.error, "Could not build the test sheet.")
+            return
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("photobooth-test-\(Int(Date().timeIntervalSince1970)).jpg")
+        do {
+            try data.write(to: url)
+            isPrintBusy = true
+            _ = try printer.submit(fileURL: url, sessionID: "TEST", copies: 1, allowRepeat: true)
+            show(.info, "Test sheet sent to \(printer.selectedPrinter.isEmpty ? printer.systemDefault : printer.selectedPrinter)")
+        } catch {
+            show(.error, error.localizedDescription)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            self.isPrintBusy = false
+        }
+    }
+
+    // MARK: Test capture (Admin)
+
+    func testCapture() {
+        guard cameraState.isReady else {
+            show(.error, "Camera is not ready — \(cameraState.label)")
+            return
+        }
+        guard !state.isSessionActive else { return }
+        Task { @MainActor in
+            do {
+                guard let camera else { return }
+                var data = try await camera.capturePhoto()
+                if self.settings.mirrorImages,
+                   let flipped = LayoutRenderer.mirroredJPEG(data, dpi: self.settings.dpi) {
+                    data = flipped
+                }
+                let dir = self.storage.root.appendingPathComponent("TestShots", isDirectory: true)
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let url = dir.appendingPathComponent("test-\(Date().sessionFolderName).jpg")
+                try data.write(to: url, options: .atomic)
+                camera.didPersistLastCapture()
+                self.shotPreview = NSImage(data: data)
+                self.show(.info, "Test shot saved to \(url.lastPathComponent)")
+                self.log.info("Test capture saved: \(url.path)")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    if !self.state.isSessionActive { self.shotPreview = nil }
+                }
+            } catch {
+                self.show(.error, error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - The physical button
+
+    /// One press of the booth button. What it does depends on where the session
+    /// is, and it deliberately does nothing at all mid-capture: a guest leaning on
+    /// the button during a countdown must not be able to derail the run.
+    func triggerPressed() {
+        switch state {
+        case .idle:
+            guard canStartSession else {
+                if activeEvent == nil {
+                    show(.warning, "Create an event first — Admin › Event › New Event.")
+                } else {
+                    show(.error, "Camera is not ready — \(cameraState.label)")
+                }
+                return
+            }
+            startSession()
+
+        case .complete, .failed:
+            // Releases the print if one is waiting, then clears the finish screen
+            // so the next group gets a fresh idle screen; their own press starts
+            // the session.
+            if pendingPrint, let s = currentSession {
+                sendToPrinter(session: s, allowRepeat: false)
+            }
+            returnToIdle()
+
+        case .starting, .countdown, .capturing, .photoPreview, .interval,
+             .retaking, .generatingPrint, .printing:
+            break
+        }
+    }
+
+    // MARK: - GitHub Pages
+
+    /// The local clone that *is* the website.
+    var pagesRepoURL: URL? {
+        let p = settings.pagesRepoPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty else { return nil }
+        return URL(fileURLWithPath: (p as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    func pagesPublisher() -> PagesPublisher? {
+        guard let repo = pagesRepoURL else { return nil }
+        var p = PagesPublisher(repo: repo)
+        p.branch = settings.pagesBranch.isEmpty ? "main" : settings.pagesBranch
+        p.longEdge = max(600, settings.pagesLongEdge)
+        p.siteTitle = settings.eventTitle
+        p.brandLink = customQRURL?.absoluteString
+        p.brandLabel = settings.customQRCaption
+        return p
+    }
+
+    /// Creates the site folder, its git repository and the landing page.
+    func setUpPagesSite(remote: String) {
+        guard let repo = pagesRepoURL else {
+            show(.warning, "Choose a folder for the site first.")
+            return
+        }
+        let title = settings.eventTitle
+        let branch = settings.pagesBranch.isEmpty ? "main" : settings.pagesBranch
+        Task { @MainActor in
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try PagesPublisher.setUp(at: repo, remote: remote, branch: branch,
+                                             siteTitle: title,
+                                             authorName: "Photobooth",
+                                             authorEmail: "mixel.org@gmail.com")
+                }.value
+                self.log.info("Gallery site ready at \(repo.path)")
+                self.show(.info, "Site folder ready. Push it once by hand to finish the connection.")
+                _ = await self.uploader.checkReachability()
+            } catch {
+                self.log.error("Site set-up failed: \(error.localizedDescription)")
+                self.show(.error, error.localizedDescription)
+            }
+        }
+    }
+
+    /// Publishes one finished session: web copies, its page, the album page, and
+    /// a push. Every step runs off the main actor — a slow push must not freeze
+    /// the booth between guests.
+    func publishToPages(eventID: String, sessionID: String) async throws {
+        guard let publisher = pagesPublisher() else { throw PagesError.noRepo }
+        guard let rec = storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
+        else { throw UploadError.missingFiles(sessionID) }
+        var event = storage.event(eventID) ?? EventRecord.unfiled
+
+        // Tokens are assigned once and kept: the QR code a guest already scanned
+        // must keep working after the next publish.
+        var session = rec
+        if session.publicToken.isEmpty {
+            session.publicToken = PagesPublisher.makeToken()
+            storage.persist(session)
+        }
+        if (event.publishedSlug ?? "").isEmpty {
+            event.publishedSlug = PagesPublisher.makeToken()
+            storage.persist(event: event)
+        }
+        let eventToken = event.publishedSlug ?? PagesPublisher.makeToken()
+        let dir = storage.directory(for: session)
+        let siblings = storage.sessions
+            .filter { $0.eventID == eventID && $0.finishedAt != nil }
+            .map { $0.id == session.id ? session : $0 }
+        let originals = settings.uploadOriginals
+        let prints = settings.uploadPrints
+        let message = "\(event.name) — \(session.id)"
+
+        try await Task.detached(priority: .utility) {
+            try publisher.write(session: session, event: event, token: session.publicToken,
+                                eventToken: eventToken, from: dir, siblings: siblings,
+                                includeOriginals: originals, includePrint: prints)
+            try publisher.commitAndPush(message: message)
+        }.value
+
+        log.info("Published \(session.id) to \(publisher.remoteURL() ?? "the site")")
+    }
+
+    /// Rebuilds and pushes every finished session — for a new site, or one that
+    /// was set up after the event.
+    func republishAllToPages() {
+        guard pagesPublisher() != nil else {
+            show(.warning, "Choose a folder for the site first.")
+            return
+        }
+        let all = storage.sessions.filter { $0.finishedAt != nil }
+        guard !all.isEmpty else {
+            show(.info, "Nothing to publish yet.")
+            return
+        }
+        for s in all { queueUpload(s) }
+        show(.info, "Queued \(all.count) session(s) for the site.")
+        retryUploads()
+    }
+
+    // MARK: - Album pages
+
+    var albumOutputURL: URL? {
+        let p = settings.albumOutputPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty else { return nil }
+        return URL(fileURLWithPath: (p as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    /// The album's file name — the event's own token, so an address cannot be
+    /// guessed from the client's name.
+    func albumFileName(for event: EventRecord) -> String {
+        let token = (event.publishedSlug ?? "").isEmpty ? event.id : (event.publishedSlug ?? "")
+        return "album-\(token).html"
+    }
+
+    func albumFileURL(for event: EventRecord) -> URL? {
+        albumOutputURL?.appendingPathComponent(albumFileName(for: event))
+    }
+
+    /// Where that album page lives once it has been put online. The app cannot
+    /// know it — nothing here uploads the page — so the operator types the folder
+    /// it is served from and this appends the file's own unguessable name.
+    func albumWebURL(for event: EventRecord) -> URL? {
+        var text = settings.albumBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        while text.hasSuffix("/") { text.removeLast() }
+        return URL(string: "\(text)/\(albumFileName(for: event))")
+    }
+
+    /// The album QR: the page where every session from the event can be seen.
+    func makeAlbumQR(for event: EventRecord, side: CGFloat = 600) -> NSImage? {
+        guard let url = albumWebURL(for: event) else { return nil }
+        return QRCode.image(for: url.absoluteString, minimumSide: side)
+    }
+
+    /// Gives an event a password if it has none, and hands it back.
+    @discardableResult
+    func ensureAlbumPassword(for event: EventRecord) -> String {
+        var e = event
+        if e.albumPassword.trimmingCharacters(in: .whitespaces).isEmpty {
+            e.albumPassword = AlbumCrypto.suggestPassword()
+        }
+        if (e.publishedSlug ?? "").isEmpty { e.publishedSlug = PagesPublisher.makeToken() }
+        if e.albumPassword != event.albumPassword || e.publishedSlug != event.publishedSlug {
+            storage.persist(event: e)
+        }
+        return e.albumPassword
+    }
+
+    func setAlbumPassword(_ password: String, for event: EventRecord) {
+        var e = event
+        e.albumPassword = password
+        storage.persist(event: e)
+    }
+
+    /// Builds one album page from what is already on Cloudinary.
+    ///
+    /// Only sessions that have actually been uploaded are included — a page that
+    /// listed photographs still sitting on the Mac would be a page of broken
+    /// images at the exact moment a client first opens it.
+    @discardableResult
+    func buildAlbum(for event: EventRecord) -> URL? {
+        guard let outDir = albumOutputURL else {
+            show(.warning, "Choose a folder for album pages first.")
+            return nil
+        }
+        guard let cloud = cloudinary else {
+            show(.warning, "Set the Cloudinary cloud name and preset first.")
+            return nil
+        }
+        let password = ensureAlbumPassword(for: event)
+        let fresh = storage.event(event.id) ?? event
+
+        let sessions = storage.sessions
+            .filter { $0.eventID == event.id && $0.uploadState == .uploaded && !$0.publicToken.isEmpty }
+            .sorted { $0.startedAt < $1.startedAt }
+            .map { s -> AlbumSite.Session in
+                let shots = s.photos.sorted { $0.index < $1.index }.compactMap { p -> AlbumSite.Shot? in
+                    guard let src = cloud.photoURL(token: s.publicToken, fileName: p.fileName),
+                          let save = cloud.photoSaveURL(token: s.publicToken, fileName: p.fileName)
+                    else { return nil }
+                    return AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: p.index)
+                }
+                var printShot: AlbumSite.Shot?
+                if s.printFileName != nil,
+                   let src = cloud.photoURL(token: s.publicToken, fileName: "print.jpg"),
+                   let save = cloud.photoSaveURL(token: s.publicToken, fileName: "print.jpg") {
+                    printShot = AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: 0)
+                }
+                return AlbumSite.Session(id: s.id, time: s.startedAt.clockStamp,
+                                         shots: shots, print: printShot)
+            }
+            .filter { !$0.shots.isEmpty || $0.print != nil }
+
+        guard !sessions.isEmpty else {
+            show(.warning, "No uploaded sessions in \(event.name) yet — nothing to put in an album.")
+            return nil
+        }
+
+        let album = AlbumSite.Album(eventName: fresh.name,
+                                    date: fresh.displayDate,
+                                    venue: fresh.venue,
+                                    boothName: settings.eventTitle,
+                                    brandLink: customQRURL?.absoluteString,
+                                    brandLabel: settings.customQRCaption,
+                                    sessions: sessions)
+        do {
+            try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+            let html = try AlbumSite.page(for: album, password: password)
+            let dest = outDir.appendingPathComponent(albumFileName(for: fresh))
+            try html.data(using: .utf8)!.write(to: dest, options: .atomic)
+            log.info("Album built for \(fresh.name) — \(sessions.count) session(s), \(album.photoCount) photo(s)")
+            show(.info, "Album built — \(album.photoCount) photographs in \(sessions.count) session(s).")
+            return dest
+        } catch {
+            log.error("Album build failed for \(fresh.id): \(error.localizedDescription)")
+            show(.error, error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// Rebuilds every event that has anything published.
+    func buildAllAlbums() {
+        let events = storage.events.filter { e in
+            storage.sessions.contains { $0.eventID == e.id && $0.uploadState == .uploaded }
+        }
+        guard !events.isEmpty else {
+            show(.info, "Nothing has been uploaded yet.")
+            return
+        }
+        var built = 0
+        for e in events where buildAlbum(for: e) != nil { built += 1 }
+        show(.info, "Built \(built) album page(s).")
+    }
+
+    /// Builds the album and opens it through the local preview server, because a
+    /// page opened as a file cannot unlock itself.
+    func previewAlbum(for event: EventRecord) {
+        guard let file = buildAlbum(for: event) else { return }
+        do {
+            _ = try AlbumPreviewServer.shared.start(root: file.deletingLastPathComponent())
+            guard let url = AlbumPreviewServer.shared.url(for: file.lastPathComponent) else {
+                throw AlbumServerError.didNotStart
+            }
+            NSWorkspace.shared.open(url)
+            log.info("Album preview at \(url.absoluteString)")
+        } catch {
+            show(.error, error.localizedDescription)
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        }
+    }
+
+    func copyAlbumDetails(for event: EventRecord) {
+        let password = ensureAlbumPassword(for: event)
+        let where_ = albumWebURL(for: event)?.absoluteString ?? albumFileName(for: event)
+        let text = "\(event.name) — private album\n\(where_)\nPassword: \(password)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        show(.info, "Album name and password copied.")
+    }
+
+    // MARK: - Cloudinary
+
+    var cloudinary: CloudinaryService? {
+        let config = CloudinaryService.Config(cloudName: settings.cloudinaryCloudName,
+                                              preset: settings.cloudinaryPreset)
+        return config.isComplete ? CloudinaryService(config: config) : nil
+    }
+
+    /// Uploads one finished session: every photograph, the print, then the page
+    /// that points at them. The page goes last on purpose — a guest who scans
+    /// early gets nothing rather than a page of broken images.
+    func publishToCloudinary(eventID: String, sessionID: String) async throws {
+        guard let cloud = cloudinary else { throw CloudinaryError.notConfigured }
+        guard let rec = storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
+        else { throw UploadError.missingFiles(sessionID) }
+        var event = storage.event(eventID) ?? EventRecord.unfiled
+
+        var session = rec
+        if session.publicToken.isEmpty {
+            session.publicToken = PagesPublisher.makeToken()
+            storage.persist(session)
+        }
+        if (event.publishedSlug ?? "").isEmpty {
+            event.publishedSlug = PagesPublisher.makeToken()
+            storage.persist(event: event)
+        }
+        let token = session.publicToken
+        let eventToken = event.publishedSlug ?? token
+        let dir = storage.directory(for: session)
+        let longEdge = max(600, settings.pagesLongEdge)
+
+        // Web copies are made in a scratch folder: the originals are the client's
+        // and never leave the Mac.
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pb-cloudinary-\(token)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        var uploaded = 0
+        if settings.uploadOriginals {
+            for photo in session.photos.sorted(by: { $0.index < $1.index }) {
+                let src = dir.appendingPathComponent(photo.fileName)
+                guard FileManager.default.fileExists(atPath: src.path) else { continue }
+                let web = scratch.appendingPathComponent(photo.fileName)
+                try await Task.detached(priority: .utility) {
+                    try PagesPublisher.webCopy(from: src, to: web, longEdge: longEdge)
+                }.value
+                _ = try await cloud.upload(fileURL: web,
+                                           publicID: CloudinaryService.photoPublicID(token: token,
+                                                                                     fileName: photo.fileName),
+                                           type: .image)
+                uploaded += 1
+            }
+        }
+
+        if settings.uploadPrints, let name = session.printFileName {
+            let src = dir.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: src.path) {
+                let web = scratch.appendingPathComponent("print.jpg")
+                try await Task.detached(priority: .utility) {
+                    try PagesPublisher.webCopy(from: src, to: web, longEdge: max(longEdge, 1800))
+                }.value
+                _ = try await cloud.upload(fileURL: web,
+                                           publicID: CloudinaryService.photoPublicID(token: token,
+                                                                                     fileName: "print.jpg"),
+                                           type: .image)
+                uploaded += 1
+            }
+        }
+
+        guard uploaded > 0 else { throw CloudinaryError.nothingToUpload }
+        log.info("Published \(session.id) to Cloudinary — \(uploaded) file(s)")
+    }
+
+    // MARK: - QR handout
+
+    /// Address of the album page for one session on the gallery site.
+    ///
+    /// Built even when the Mac is offline: the session is already in the upload
+    /// queue, so the link a guest scans at the venue works once the queue drains.
+    func galleryURL(for rec: SessionRecord) -> URL? {
+        // Cloudinary sends every HTML and SVG file as a download, so there is no
+        // page to point at — only images render in a browser. The code therefore
+        // opens the session's print, which is the one image that holds every
+        // photograph from that session.
+        if settings.galleryHost == .cloudinary {
+            guard !rec.publicToken.isEmpty, let cloud = cloudinary else { return nil }
+            let name = rec.printFileName != nil
+                ? "print.jpg"
+                : (rec.photos.sorted { $0.index < $1.index }.first?.fileName ?? "")
+            guard !name.isEmpty else { return nil }
+            return cloud.photoURL(token: rec.publicToken, fileName: name)
+        }
+        guard let text = normalisedSiteBase else { return nil }
+        switch settings.galleryHost {
+        case .githubPages:
+            // Static hosting: one directory per session, no query string, and an
+            // unguessable token instead of the date-stamped folder name.
+            guard !rec.publicToken.isEmpty else { return nil }
+            return URL(string: "\(text)/\(PagesPublisher.sessionPath(token: rec.publicToken))/")
+        case .server:
+            guard var comps = URLComponents(string: text + "/event") else { return nil }
+            comps.queryItems = [
+                URLQueryItem(name: "e", value: rec.eventID),
+                URLQueryItem(name: "s", value: rec.id)
+            ]
+            return comps.url
+        case .cloudinary:
+            return nil          // handled above, before the site-address guard
+        }
+    }
+
+    /// The site address with a scheme and no trailing slash, or nil if unset.
+    var normalisedSiteBase: String? {
+        var text = settings.uploadBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        while text.hasSuffix("/") { text.removeLast() }
+        return text
+    }
+
+    /// The operator's own address, typed in Settings › Guest QR Code.
+    ///
+    /// Accepts what somebody actually types — "instagram.com/mixelbooth" as
+    /// readily as the full address — but refuses anything that is not a usable
+    /// URL rather than printing a code that leads nowhere.
+    var customQRURL: URL? {
+        var text = settings.customQRLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains(" ") else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        guard let url = URL(string: text), let host = url.host, host.contains(".") else { return nil }
+        return url
+    }
+
+    /// What each of the two cards points at, for one finished session.
+    ///
+    /// Deliberately literal: whatever cannot be built is simply not shown. A
+    /// silent substitution would put a code on the screen that sends guests
+    /// somewhere the operator never chose.
+    func qrPayloads(for rec: SessionRecord) -> (album: String?, brand: String?) {
+        let album = galleryURL(for: rec)?.absoluteString
+        let brand = customQRURL?.absoluteString
+        switch settings.qrTarget {
+        case .sessionAlbum: return (album, nil)
+        case .customLink:   return (nil, brand)
+        case .eventAlbum:
+            // The whole event, on the web. Needs an event to belong to — a
+            // session with none has nothing to point at.
+            let page = activeEvent.flatMap { albumWebURL(for: $0)?.absoluteString }
+            return (page, nil)
+        case .both:         return (album, brand)
+        }
+    }
+
+    /// The single code that fits in the 4×6 footer. With both cards on screen the
+    /// sheet carries the photo link — the print is theirs, and the screen they
+    /// scanned the other code from is gone by then.
+    func printQRPayload(for rec: SessionRecord) -> String? {
+        let p = qrPayloads(for: rec)
+        return p.album ?? p.brand
+    }
+
+    /// The photos code — but only once there are photographs at the other end of
+    /// it. A code scanned at a venue with no internet leads to nothing yet, and a
+    /// guest who gets a "not found" assumes their photographs are lost rather
+    /// than still in a queue. The printed sheet keeps its code either way: paper
+    /// is scanned at home, by which time the upload has long since caught up.
+    func makeQR(for rec: SessionRecord, side: CGFloat = 600) -> NSImage? {
+        guard settings.showQRCode || settings.printQRCode else { return nil }
+        if settings.qrRequiresUpload && rec.uploadState != .uploaded { return nil }
+        guard let payload = qrPayloads(for: rec).album else { return nil }
+        return QRCode.image(for: payload, minimumSide: side)
+    }
+
+    /// The operator's own code. Built from settings alone, so Admin can preview
+    /// it without a session in hand.
+    /// Why no code can be built, in the operator's words — nil when all is well.
+    var qrTargetProblem: String? {
+        if settings.qrTarget == .eventAlbum {
+            if settings.albumBaseURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "Set the album web address under Control › Album Page before the code can point at it."
+            }
+            if activeEvent == nil { return "No event chosen, so there is no album to point at." }
+            return nil
+        }
+        let needsAlbum = settings.qrTarget != .customLink
+        let needsLink  = settings.qrTarget != .sessionAlbum
+        let haveAlbum  = settings.galleryHost == .cloudinary
+            ? cloudinary != nil
+            : !settings.uploadBaseURL.trimmingCharacters(in: .whitespaces).isEmpty
+        let haveLink   = customQRURL != nil
+        if needsAlbum && !haveAlbum && needsLink && !haveLink {
+            return "Set the gallery address or type a link — the QR code has nowhere to point."
+        }
+        if needsAlbum && !haveAlbum {
+            if settings.qrTarget == .both { return "No gallery set up, so only your own link is shown." }
+            return settings.galleryHost == .cloudinary
+                ? "Set the Cloudinary cloud name and upload preset under Control › Gallery Site."
+                : "Set the gallery site address under Control › Gallery Site."
+        }
+        if needsLink && !haveLink {
+            return settings.customQRLink.trimmingCharacters(in: .whitespaces).isEmpty
+                ? "Type the link the QR code should open."
+                : "That link does not look like a web address — check it in Settings › Guest QR Code."
+        }
+        return nil
+    }
+
+    func makeBrandQR(side: CGFloat = 600) -> NSImage? {
+        guard let url = customQRURL else { return nil }
+        return QRCode.image(for: url.absoluteString, minimumSide: side)
+    }
+
+    func copyGalleryLink(for rec: SessionRecord) {
+        guard let url = galleryURL(for: rec) else {
+            show(.warning, "Set the gallery site address in Settings first.")
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        show(.info, "Album link copied.")
+    }
+
+    // MARK: Banner
+
+    func show(_ kind: BannerMessage.Kind, _ text: String) {
+        banner = BannerMessage(kind: kind, text: text)
+        let token = banner?.id
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if self.banner?.id == token { self.banner = nil }
+        }
+    }
+
+    /// Seconds since the running session started — drives the viewfinder timecode.
+    var sessionElapsed: TimeInterval {
+        guard let s = currentSession else { return 0 }
+        return Date().timeIntervalSince(s.startedAt)
+    }
+
+    // MARK: Guest-facing progress
+
+    var progress: (shot: Int, total: Int)? {
+        switch state {
+        case .countdown(let s, let t, _), .capturing(let s, let t),
+             .photoPreview(let s, let t), .interval(let s, let t),
+             .retaking(let s, let t):
+            return (s, t)
+        default: return nil
+        }
+    }
+}

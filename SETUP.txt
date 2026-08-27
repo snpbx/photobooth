@@ -1,0 +1,456 @@
+PHOTOBOOTH FOR MAC
+Canon EOS DSLR  ·  Canon SELPHY CP1500  ·  4x6 prints
+
+------------------------------------------------------------
+INSTALL
+------------------------------------------------------------
+1. Drag Photobooth to the Applications folder.
+2. First launch only: right-click Photobooth > Open, then click
+   Open in the dialog. The app is signed ad-hoc rather than with
+   an Apple Developer ID, so macOS asks once. After that it opens
+   normally.
+
+Everything the camera needs is inside the app. Homebrew is NOT
+required on the machine you install it on.
+
+Requires macOS 14 or later on an Apple Silicon Mac.
+
+------------------------------------------------------------
+CAMERA — CANON EOS 6D
+------------------------------------------------------------
+- Connect the 6D by USB and switch it on.
+- Set the mode dial to M or Av. Fully automatic (green square)
+  and scene modes block remote capture.
+- Set the lens switch to AF.
+- Leave a card in the camera. Each shot is copied to the Mac and
+  then removed from the card (this can be turned off in Admin >
+  Storage).
+- Turn OFF auto power-off, or the camera sleeps between guests.
+- Quit Image Capture and Photos before starting. macOS grabs the
+  camera for those apps; Photobooth releases it automatically on
+  connect, but a running Photos will grab it straight back.
+
+If the camera is not found: Admin > Camera > Connect.
+
+------------------------------------------------------------
+PRINTER — CANON SELPHY CP1500
+------------------------------------------------------------
+- Add the SELPHY in System Settings > Printers & Scanners first;
+  Photobooth prints through the normal macOS print system.
+- Load the KP-108IN / KC-36IP postcard-size cassette and ribbon.
+- In Admin > Printer, choose the SELPHY and leave "Borderless"
+  ticked. That selects the Postcard.Fullbleed paper size, which
+  is the borderless 4x6 the CP1500 exposes.
+- Run a Test Print before guests arrive. The test sheet has a
+  frame right at the paper edge — if any side of the frame is
+  missing, the paper size is wrong.
+
+------------------------------------------------------------
+THE IDLE SCREEN
+------------------------------------------------------------
+Between sessions the booth shows the camera, mirrored, so guests
+can see themselves while they decide - the screen reads as a
+mirror rather than a black rectangle. The wording sits over it
+behind a soft vignette so it stays readable against a bright
+room.
+
+Admin > Camera > "Show the camera on the idle screen" turns it
+off; the screen then stays blank until a session starts.
+
+It only runs while the BOOTH WINDOW is open - closing that
+window releases the camera. Even so, a DSLR held in live view
+all evening warms up and drains its battery: keep the 6D on
+mains power (a dummy battery / AC adapter) for a long booking,
+or switch this off and let the screen wake only for sessions.
+
+------------------------------------------------------------
+THE START BUTTON (USB)
+------------------------------------------------------------
+Almost every photobooth button sold - arcade dome, foot switch,
+big red button - plugs in as a USB keyboard and sends one key.
+Photobooth listens for that key rather than talking to the
+device, so any of them works.
+
+Set it up once:
+  1. Plug the button in.
+  2. Admin > Booth Button > Learn.
+  3. Press the button. Its key is captured and shown.
+
+WORKING WHEN THE APP IS NOT IN FRONT
+By default the button also works when Photobooth is behind
+another window, or the mouse pointer is on the other screen.
+macOS will not let any app watch the keyboard system-wide
+without permission, so the first time you need to grant it:
+
+  Admin > Booth Button > Grant Access
+  (or System Settings > Privacy & Security > Input Monitoring,
+   then switch Photobooth on)
+
+Until it is granted the button still works, but only while a
+Photobooth window is frontmost. Admin says which of the two you
+are in - "Works anywhere" or "Needs Input Monitoring".
+
+Grant it again after installing a new build. The app is signed
+ad-hoc, so macOS treats each build as a new app.
+
+Space, Return and keypad Enter also start a session from the
+booth screen, exactly as the button does.
+
+AFTER A SESSION - PUSH BUTTON TO RESTART AND PRINT
+"Wait for a button press after each session" is on by default:
+the finish screen - with the QR code on it - stays up until
+somebody presses the button, instead of clearing itself on a
+timer.
+
+With automatic printing on, that press does both jobs. The sheet
+is built and saved the moment the session ends but is NOT sent to
+the SELPHY yet; the screen says PUSH BUTTON TO RESTART AND PRINT.
+One press sends the print and resets the booth for the next group,
+so the sheet starts coming out as they walk away.
+
+Nobody pressed? The booth still resets itself after "Give up
+waiting after" - but it does NOT print, because there is nobody
+there to take the sheet. Nothing is lost: the print image is on
+disk, and Admin > Sessions can send it whenever you like. The
+console also says "Print waiting for the button press" while the
+sheet is held, and "Print Session" sends it by hand.
+
+Set "Give up waiting after" to 0 to wait indefinitely, or leave
+it at a couple of minutes so an unattended booth still resets.
+
+Turn OFF "Wait for a button press" and the old behaviour is back:
+the print goes out as soon as the session ends and the finish
+screen clears itself on the Timing value.
+
+------------------------------------------------------------
+RETAKING A PHOTO BY NUMBER
+------------------------------------------------------------
+Every photograph in a session has a number, and Admin > Session
+shows those numbers as buttons.
+
+  Click a number DURING the run  - it turns red and that shot is
+                                   taken again after the last one.
+  Click a number ON THE FINISH SCREEN - the booth reopens the
+                                   session, re-shoots that photo,
+                                   rebuilds the print and sends it
+                                   again.
+
+Click a red number again to change your mind. Numbers that have
+not been taken yet are greyed out.
+
+The superseded frame is never deleted - it is kept alongside as
+photo-NN.retake-<time>.jpg.
+
+
+------------------------------------------------------------
+THE 4-SHOT LAYOUT (2x2 GRID)
+------------------------------------------------------------
+"4 Photos - 2x2 Grid" places four PORTRAIT frames two by two on
+a wide mat, after the reference layout: even side mats, a small
+gap, and a deeper foot.
+
+Each frame is a true 2:3 - a 35 mm negative stood on its end -
+so nothing is stretched. That has one consequence worth knowing:
+the 6D shoots 3:2 LANDSCAPE, and Fill crops a landscape frame
+hard to make it portrait. Either
+
+  - turn the camera on its side and shoot portrait, or
+  - set Photo fitting to Fit, which letterboxes instead of
+    cropping, or
+  - use one of the other layouts, which stay landscape.
+
+The guest framing guide on the booth screen follows the layout,
+so people can see what the print will keep before they pose.
+
+The mat colour is Settings > Branding > Print background.
+It is set to a warm cream (#F3EBDC); #FFFFFF returns it to white.
+
+------------------------------------------------------------
+THE QR CODE
+------------------------------------------------------------
+When a session finishes, the booth shows a QR code next to the
+print. Every code is generated on the Mac itself - no internet
+is needed to make one, at the venue or anywhere else.
+
+Settings > Guest QR Code > "The code opens" picks where it sends
+people:
+
+  THEIR PHOTOS  the session's own page on your gallery site:
+                a Save button on each frame and a "Download all"
+                that hands them a zip. Needs the gallery address
+                (Admin > Gallery Site), but NOT internet at the
+                venue - the link starts working as soon as the
+                upload queue drains.
+
+  THE ALBUM     the event's album page, online: every session
+                from the night in one place. Set the address in
+                Admin > Album Page > "Album web address" - the
+                folder you upload the album files to - and the
+                app works out the rest from the page's own file
+                name. Remember the page is PASSWORD PROTECTED,
+                so give out the password with the code.
+
+  MY LINK       any address you type - Instagram, your website,
+                a link tree. Type "instagram.com/yourbooth" and
+                the https:// is added for you. Use this when the
+                page you send people to is where the photos live
+                too, or when you want the follow more than the
+                download.
+
+  BOTH          two cards on the finish screen, one each, with
+                their own captions. The 4x6 has room for one and
+                carries the photo link.
+
+NO INTERNET? THE PHOTO CODE WAITS
+The photo code is held back until the photographs are actually
+online. At a venue with no signal a guest would otherwise scan a
+code for something that is not there yet and assume their
+photographs were lost. The moment the upload lands the code
+appears by itself - even with the finish screen still up and the
+guests still standing there.
+
+Your own link (Instagram) is not affected: that is a code for a
+page that already exists, and the guest's phone opens it on its
+own data.
+
+Turn this off in Settings > Guest QR Code > "Only show it once
+the photos are online" if you would rather show it immediately.
+
+The card under the picker shows the exact code the booth will
+put on screen, the address it resolves to, and an Open Link
+button to try it. If the address is unusable the booth says so
+there instead of printing a code that leads nowhere.
+
+Also in that card:
+  - show it on the finish screen        (on)
+  - print it on the 4x6 as well         (off)
+  - the caption under each code
+
+Printing it grows the footer strip to about 24 mm so the code
+is big enough for a phone to read off paper.
+
+ON THE 4 DUPLICATE STRIPS LAYOUT
+That sheet is cut down the middle, so the footer is printed
+TWICE - once per strip. Each guest walks away with the booth
+name and, if the code is switched on, their own scannable code.
+With the code on, that footer stacks (code above, name below)
+and grows to 1.3in, because a 20 mm square will not fit beside
+two lines of type in a two-inch strip.
+
+------------------------------------------------------------
+THE PHOTO LINK (CLOUDINARY)
+------------------------------------------------------------
+Cloudinary stores every session and serves it from its CDN. The
+QR code on the booth screen opens that session's PRINT - one
+image holding all the photographs from that session - which a
+guest saves with a long press.
+
+Why the print and not a gallery page: Cloudinary is a media CDN,
+not a web host. It sends every HTML and SVG file as a DOWNLOAD
+(measured on our own account: content-disposition: attachment),
+so a code pointing at a page would hand a guest a file instead
+of showing anything. Images are served inline and fast, so an
+image is what the code opens.
+
+SET IT UP (about three minutes)
+
+  1. cloudinary.com > Settings > Upload > Upload presets >
+     Add upload preset:
+        Signing mode ....... Unsigned
+        Resource type ...... Image
+        Unique filename .... OFF
+        Overwrite .......... ON
+        Invalidate ......... ON
+     Name it photobooth and save.
+
+  2. Copy your CLOUD NAME from the dashboard - the short code in
+     your account, not the API key.
+
+  3. Admin > Gallery Site > Cloudinary, paste both, and press
+     Test Connection.
+
+No API key and no API secret are stored on the Mac. An unsigned
+preset is the whole credential, so a stolen laptop cannot be
+used to delete or re-key your account.
+
+WHERE THINGS LAND
+  the print   res.cloudinary.com/<cloud>/image/upload/booth/<token>/print.jpg
+  each photo  res.cloudinary.com/<cloud>/image/upload/booth/<token>/photo-01.jpg
+
+The address is worked out from the token before anything is
+uploaded, so a QR printed at a venue with no wifi is already
+correct - it starts working when the Mac is next online.
+
+Every individual photograph is uploaded too. They are not linked
+from anywhere, so use Admin > Sessions to find them when a
+client asks for the separate frames.
+
+WHAT IS PUBLISHED
+  Web-sized copies only - the long edge is capped and the
+  originals never leave the Mac.
+
+THINGS TO KNOW
+  - Anyone with the address can open it, and Cloudinary cannot
+    make it private on a free plan. The token is the only thing
+    keeping it obscure.
+  - The free plan is about 25 GB of storage and 25 GB of monthly
+    traffic. A busy wedding is a few hundred MB.
+  - "Invalidate" in the preset matters: without it a retaken
+    photo can sit in the CDN cache and guests keep seeing the
+    old one.
+
+------------------------------------------------------------
+THE PRIVATE ALBUM PAGE
+------------------------------------------------------------
+The QR code on the booth gives a guest their own print, there
+and then. The ALBUM PAGE is the other half: one page per event,
+holding every session in order, for the client - behind a
+password you hand over.
+
+  Admin > Album Page
+    Save pages to ......  a folder on the Mac
+    Password ...........  made up for you; change it if you like
+    Build & Open Album .  writes <event>.html and opens it
+    Copy Name & Password  for pasting into a message
+
+WHAT THE PASSWORD ACTUALLY DOES
+The page does not contain the photographs, their addresses, or
+even the client's name. All of it is encrypted, and the password
+is what turns it back into a gallery. A wrong password does not
+fail a check that somebody could skip - it simply fails to
+decrypt anything.
+
+  AES-256-GCM, key stretched from the password with PBKDF2-
+  SHA256 at 250,000 rounds. Every browser does this itself.
+
+The honest limit: anyone you have already given a direct photo
+link to keeps that link. The password is the lock on the front
+door, not on every window.
+
+WHERE TO PUT THE PAGE
+It is one self-contained file. Put it anywhere that serves files
+over https - or send the file itself to the client.
+
+Whatever you choose, put that folder's address in "Album web
+address". That is what the album QR code points at, both on the
+finish screen and on the 4x6. The app does NOT upload the page
+for you - only the photographs go up automatically.
+
+IMPORTANT: it must be opened from a web address, not by double-
+clicking the file. Browsers refuse to hand out the decryption
+tools to a page opened straight off a disk, and the page will
+say so rather than pretending the password was wrong.
+
+ONLY WHAT IS UPLOADED GOES IN
+Sessions still waiting in the upload queue are left out rather
+than shown as broken pictures. Build the album again once the
+queue has drained.
+
+------------------------------------------------------------
+EVENTS - ONE FOLDER AND ONE ALBUM PER CLIENT
+------------------------------------------------------------
+Every session belongs to an event, so one client's photographs
+never mix with the next client's.
+
+Before the first guest:
+  Admin > Event > New Event
+  Give it a name, client, venue and date.
+
+The Start Session button then reads
+  "Start Session - Cruz & Santos Wedding"
+so you can see at a glance who you are shooting for. Sessions
+cannot start until an event is chosen.
+
+Switch client mid-day with the "Switch event" menu. Everything
+after that point files under the new one.
+
+On disk:
+  Pictures/Photobooth/Events/2026-08-21-cruz-santos-wedding/
+    event.json
+    Sessions/2026-08-21_20-14-02/photo-01.jpg ... print.jpg
+
+Sessions you shot before events existed still work - they show
+up under "Unfiled" in Admin > Sessions, and you can file them
+with "File under event..." in the session detail pane.
+
+------------------------------------------------------------
+THE GALLERY WEBSITE
+------------------------------------------------------------
+Finished sessions upload themselves to the gallery site, each
+event getting its own album.
+
+Set it up once:
+  1. Run the site (PhotoboothWeb):   node server.js
+     It prints an upload key on start-up.
+  2. Admin > Gallery Site
+     - tick "Upload finished sessions automatically"
+     - Site address:  https://your-gallery-address
+     - Upload key:    paste the key from step 1
+  3. Press Test Connection. It should say Connected.
+
+NO INTERNET AT THE VENUE?
+Nothing to do. Sessions are queued on disk as they finish and
+upload by themselves the next time the Mac is online - even if
+that is days later, after the app has been quit and reopened.
+Admin > Gallery Site shows how many are waiting.
+
+If the booth Mac will never get online, open the site on any
+other machine, go to /upload, and drag the session folder from
+Pictures/Photobooth/Events/<event>/Sessions/<session> onto the
+page. Typing an event name that already exists adds to that
+album instead of making a second one.
+
+------------------------------------------------------------
+THE SCREEN
+------------------------------------------------------------
+Both the guest screen and this console are styled as an old
+camcorder viewfinder: black field, scanlines, and the familiar
+overlay - the capture mode and timecode at the top left, shot
+counter top right, the date stamp at the bottom left. A retake
+says RETAKE up there for the whole of its cycle.
+
+The tape gauge at the bottom right empties as a session runs,
+so a guest can see how many shots are left without reading a
+number.
+
+------------------------------------------------------------
+RUNNING AN EVENT
+------------------------------------------------------------
+- Admin is one window; the guest booth is a separate window, so
+  the booth can sit full screen on the event display while you
+  keep Admin on the laptop.
+- Admin > Booth Window > Open Booth Window  (or press Cmd-B).
+- Choose which display the booth uses in that same panel.
+- Press ESC on the booth screen to come back to Admin. Set an
+  Admin passcode in Settings so guests cannot.
+
+Shortcuts
+  Cmd-B            open / close the booth window
+  Cmd-1 / Cmd-2    Admin window / booth window
+  Space or Return  start a session (on the booth idle screen)
+  Shift-Cmd-R      retake the photo on screen
+  Cmd-Return       start a session from Admin
+  Cmd-.            cancel the running session
+  Ctrl-Cmd-F       full screen
+
+------------------------------------------------------------
+WHERE THINGS ARE SAVED
+------------------------------------------------------------
+Photographs   ~/Pictures/Photobooth/Sessions/<date_time>/
+                photo-01.jpg ... the untouched originals
+                print.jpg      the flattened 4x6 that was printed
+                session.json   layout, timings, print status
+Settings      ~/Library/Application Support/Photobooth/settings.json
+Logs          ~/Library/Logs/Photobooth/photobooth-<date>.log
+
+Every photograph is written to disk the moment it is taken,
+before anything else in the workflow runs. A retake keeps the
+old frame as photo-NN.retake-<time>.jpg rather than deleting it.
+
+------------------------------------------------------------
+REHEARSING WITHOUT HARDWARE
+------------------------------------------------------------
+Admin > Camera > Demo generates test frames so you can practise
+timings or show a client the flow with nothing plugged in. The
+guest screen shows a large orange DEMO SOURCE badge the whole
+time it is selected, so it cannot be left on by accident.
