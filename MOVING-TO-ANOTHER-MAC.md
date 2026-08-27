@@ -14,7 +14,9 @@ git -C ~/Movies/Work/CLAUDE/Photobooth remote add origin https://github.com/<you
 git -C ~/Movies/Work/CLAUDE/Photobooth push -u origin main
 ```
 
-On the Mac Mini:
+On the Mac Mini, follow **MAC-MINI-SETUP.md** — it is the same thing written
+out step by step, including the developer tools and the GitHub token the clone
+of a private repository asks for. The short version:
 
 ```bash
 mkdir -p ~/Movies/Work/CLAUDE && cd ~/Movies/Work/CLAUDE
