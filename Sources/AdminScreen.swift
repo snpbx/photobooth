@@ -33,11 +33,7 @@ struct AdminScreen: View {
 
             Group {
                 switch tab.wrappedValue {
-                case .control:
-                    switch c.settings.adminConsole {
-                    case .full:    ControlTab(c: c)
-                    case .minimal: MinimalControlTab(c: c)
-                    }
+                case .control:  ControlTab(c: c)
                 case .gallery:  GalleryTab(c: c)
                 case .settings: SettingsTab(c: c)
                 case .log:      LogTab()
@@ -86,23 +82,6 @@ private struct AdminToolbar: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
     }
 
-    /// Swaps the Control tab between the two consoles. Only shown there, since
-    /// it is the only tab it changes.
-    @ViewBuilder private var consoleToggle: some View {
-        if tab == .control {
-            let minimal = c.settings.adminConsole == .minimal
-            Button {
-                c.settingsService.settings.adminConsole = minimal ? .full : .minimal
-            } label: {
-                Image(systemName: minimal
-                      ? "arrow.up.left.and.arrow.down.right"
-                      : "arrow.down.right.and.arrow.up.left")
-            }
-            .buttonStyle(.borderless)
-            .help(minimal ? "Full console" : "Minimal console")
-        }
-    }
-
     @ViewBuilder private var full: some View {
         title
         tabs
@@ -112,7 +91,6 @@ private struct AdminToolbar: View {
         StatusPill(icon: "printer", label: c.printer.state.label, tint: c.printer.state.tint)
         StatusPill(icon: "internaldrive", label: "\(c.storage.freeSpaceMB.asDiskSize) free",
                    tint: c.storage.freeSpaceMB < 500 ? VHS.amber : .secondary)
-        consoleToggle
         boothButton
     }
 
@@ -121,7 +99,6 @@ private struct AdminToolbar: View {
         Spacer(minLength: 8)
         StatusPill(icon: "camera", label: shortCamera, tint: c.cameraState.tint)
         StatusPill(icon: "printer", label: shortPrinter, tint: c.printer.state.tint)
-        consoleToggle
         boothButton
     }
 
@@ -130,7 +107,6 @@ private struct AdminToolbar: View {
         Spacer(minLength: 4)
         StatusDot(tint: c.cameraState.tint)
         StatusDot(tint: c.printer.state.tint)
-        consoleToggle
         boothButton
     }
 
@@ -267,77 +243,6 @@ struct ResponsiveColumns: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
-            }
-        }
-    }
-}
-
-// MARK: - Minimal control tab
-
-/// The console stripped to what anyone actually touches during a run: the
-/// session, retakes, the layout and how many copies.
-///
-/// Deliberately built from the very same `SessionCard` and `LayoutCard` the full
-/// console uses rather than trimmed copies of them. Two hand-maintained versions
-/// of a Start button is how one of them ends up wrong at two in the morning.
-///
-/// Everything left out — events, camera, booth button, gallery, timing, printer,
-/// storage — is what a booth is *set up* with, and is one press away in the full
-/// console.
-private struct MinimalControlTab: View {
-    @ObservedObject var c: BoothController
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 30) {
-                eventBar
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 40) {
-                        SessionCard(c: c).frame(maxWidth: .infinity)
-                        LayoutCard(c: c).frame(maxWidth: .infinity)
-                    }
-                    VStack(spacing: 30) {
-                        SessionCard(c: c)
-                        LayoutCard(c: c)
-                    }
-                }
-            }
-            .frame(maxWidth: 1180)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
-        }
-        // Always finger-sized, whatever the global preference says. This console
-        // exists for the middle of an event, on the panel beside the booth; the
-        // Settings switch is what governs the full console, which is also used
-        // from a laptop while setting up.
-        .environment(\.touchControls, true)
-    }
-
-    /// Which client is being shot — the one piece of the full console that has
-    /// to survive here. `startSession()` refuses to run without an event, and
-    /// the events themselves are chosen in the full console, so a minimal view
-    /// that simply omitted this would strand the operator with a dead Start
-    /// button and nothing explaining it.
-    @ViewBuilder private var eventBar: some View {
-        if let e = c.activeEvent {
-            HStack(spacing: 8) {
-                OSDLabel(text: "EVENT", size: 10, weight: .bold, color: VHS.dim, tracking: 0.22)
-                Text(e.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-            }
-        } else {
-            HStack(spacing: 10) {
-                Label("No event selected — a session cannot start. Events are chosen in the full console.",
-                      systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(VHS.amber)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("Full Console") { c.settingsService.settings.adminConsole = .full }
-                    .buttonStyle(QuietButtonStyle())
             }
         }
     }

@@ -102,19 +102,12 @@ That is a performance decision as much as a visual one. `VHSText` has a flat pat
 shadow, and the console uses `OSDLabel`, which is just monospaced capitals with
 tracking.
 
-## Two consoles, and touch
+## Touch
 
-The Control tab comes in two shapes, switched from a toolbar button or Settings ›
-Interface. **Full** is everything — events, camera, booth button, gallery, timing,
-printer, storage — which is what a booth is set up with. **Minimal** is the
-session, retakes, the layout and copies: the four things anyone touches once it
-is running. Both are built from the same cards rather than trimmed copies, so
-there is only ever one Start button to get wrong.
-
-**Touch controls** (Settings › Interface) sizes the console for a fingertip.
-It cannot be detected and is deliberately a preference: an iPad driven as a
-monitor delivers its taps to macOS as ordinary mouse clicks, indistinguishable
-from a trackpad, so there is nothing for the app to sense.
+**Touch controls** (Settings › Interface) sizes the console for a fingertip. It
+cannot be detected and is deliberately a preference: an iPad driven as a monitor
+delivers its taps to macOS as ordinary mouse clicks, indistinguishable from a
+trackpad, so there is nothing for the app to sense.
 
 The target is Apple's 44pt minimum, which on an 11" iPad at 2× is about 8.5mm of
 glass — the physical size that number was chosen for on iOS. Measured down the
@@ -122,16 +115,22 @@ Session column at 1180 × 820:
 
 | | off | on |
 | --- | --- | --- |
-| Start Session | 31 pt | 46 pt |
-| Retake number | 29 | 45 |
-| Restart / Print Session | 28 | 44 |
+| Start Session | 31 pt | 54 pt |
+| Retake number | 29 | 51 |
+| Restart / Print Session | 28 | 48 |
+| Copies | field + 11pt arrows | 51 × 51 buttons |
+
+Copies is ten buttons rather than a field and a stepper: the value only ever runs
+1–10, so there is nothing worth typing, and on a touch screen a text field means
+the on-screen keyboard covering the panel to enter a single digit.
 
 `controlSize(.large)` does the work for the controls the app does not draw itself
 — text fields, the segmented tab bar — and toggles swap from macOS's 14pt
-checkbox to the switch style, which is nearer 50 × 30. The two-arrow native
-stepper is replaced outright by a pair of 44 × 44 pads: stacked 11pt arrows are
-not a target a fingertip can pick between. Every custom button also gets a
-`contentShape`, so the gaps between glyphs stop being dead space.
+checkbox to the switch style, which is nearer 50 × 30. Every custom button also
+gets a `contentShape`, so the gaps between glyphs stop being dead space.
+
+A second, minimal Control tab — session, retakes, layout, copies — was built and
+then removed; it is in the history if it is wanted back.
 
 ## Keeping it light
 

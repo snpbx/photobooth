@@ -327,19 +327,6 @@ enum CropMode: String, Codable, CaseIterable, Identifiable {
     var title: String { self == .fill ? "Fill (centre crop)" : "Fit (no crop)" }
 }
 
-/// Which of the two Admin consoles the operator is using.
-enum AdminConsoleStyle: String, Codable, CaseIterable, Identifiable {
-    /// Everything: events, camera, booth button, gallery, timing, printer,
-    /// storage. What you set the booth up with.
-    case full
-    /// Session, retakes, layout and copies — the four things anyone touches once
-    /// the booth is running and the only decisions left are per-group.
-    case minimal
-
-    var id: String { rawValue }
-    var title: String { self == .full ? "Full" : "Minimal" }
-}
-
 // MARK: - Settings
 
 /// Where the guest QR code sends people.
@@ -496,7 +483,6 @@ struct AppSettings: Codable, Equatable {
     var adminPasscode: String = ""
     var accentHex: String = "#E8B33C"
     var lastAdminTab: String = "Control"   // reopen where the operator left off
-    var adminConsole: AdminConsoleStyle = .full
     /// Size the console's controls for a fingertip. Cannot be detected — an iPad
     /// used as a monitor delivers its touches as ordinary mouse clicks — so the
     /// operator sets it.

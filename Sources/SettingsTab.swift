@@ -501,17 +501,6 @@ private struct InterfaceCard: View {
 
     var body: some View {
         SectionCard(title: "Interface") {
-            LabeledRow(label: "Console",
-                       help: "Full is everything — events, camera, printer, storage — for setting the booth up. Minimal is the session, retakes, layout and copies, which is all anyone touches once it is running. The toolbar button switches between them.") {
-                Picker("", selection: Binding(
-                    get: { c.settingsService.settings.adminConsole },
-                    set: { c.settingsService.settings.adminConsole = $0 })) {
-                        ForEach(AdminConsoleStyle.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden().frame(width: 180)
-            }
-
             LabeledRow(label: "Touch controls",
                        help: "Sizes buttons, steppers, toggles and text fields for a fingertip — Apple's 44pt minimum, about 8.5mm on an iPad at 2×. Switch it on when the console is on a touch screen: an iPad used as a monitor sends its taps to macOS as ordinary clicks, so the app cannot tell on its own.") {
                 Toggle("", isOn: Binding(
