@@ -289,24 +289,29 @@ private struct MinimalControlTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(spacing: 30) {
                 eventBar
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 34) {
+                    HStack(alignment: .top, spacing: 40) {
                         SessionCard(c: c).frame(maxWidth: .infinity)
                         LayoutCard(c: c).frame(maxWidth: .infinity)
                     }
-                    VStack(spacing: 22) {
+                    VStack(spacing: 30) {
                         SessionCard(c: c)
                         LayoutCard(c: c)
                     }
                 }
             }
-            .frame(maxWidth: 1120)
+            .frame(maxWidth: 1180)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
         }
+        // Always finger-sized, whatever the global preference says. This console
+        // exists for the middle of an event, on the panel beside the booth; the
+        // Settings switch is what governs the full console, which is also used
+        // from a laptop while setting up.
+        .environment(\.touchControls, true)
     }
 
     /// Which client is being shot — the one piece of the full console that has
@@ -647,8 +652,8 @@ private struct RetakeNumber: View {
     var body: some View {
         Button(action: action) {
             Text("\(number)")
-                .font(VHS.mono(touch ? 15 : 12, .bold))
-                .frame(width: touch ? 48 : 30, height: touch ? 44 : 28)
+                .font(VHS.mono(touch ? 16 : 12, .bold))
+                .frame(width: touch ? 54 : 30, height: touch ? 50 : 28)
                 .background(background)
                 .foregroundStyle(foreground)
                 .overlay(Rectangle().stroke(border, lineWidth: 1))
@@ -687,20 +692,21 @@ private struct RetakeNumber: View {
 /// Wraps its children onto as many rows as the width needs.
 struct FlowRow: View {
     var spacing: CGFloat = 6
+    var perRow: Int = 8
     let items: () -> [AnyView]
 
-    init(spacing: CGFloat = 6, items: @escaping () -> [AnyView]) {
+    init(spacing: CGFloat = 6, perRow: Int = 8, items: @escaping () -> [AnyView]) {
         self.spacing = spacing
+        self.perRow = max(1, perRow)
         self.items = items
     }
 
     var body: some View {
         let all = items()
-        // Eight buttons at 30pt wide fit one row above ~300pt; below that they
-        // break into two. Chunking is simpler here than a full flow layout and
-        // gives the same result for the handful of numbers a layout can have.
-        let rows = stride(from: 0, to: all.count, by: 8).map { start in
-            Array(start..<min(start + 8, all.count))
+        // Chunking is simpler than a full flow layout and gives the same result
+        // for the handful of numbers a layout or a copy count can have.
+        let rows = stride(from: 0, to: all.count, by: perRow).map { start in
+            Array(start..<min(start + perRow, all.count))
         }
         VStack(alignment: .leading, spacing: spacing) {
             ForEach(Array(rows.enumerated()), id: \.offset) { row in
@@ -1021,12 +1027,7 @@ private struct LayoutCard: View {
 
             Divider().opacity(0.4)
 
-            LabeledRow(label: "Copies", help: "Prints sent to the SELPHY per session.") {
-                IntStepper(value: Binding(
-                    get: { c.settingsService.settings.copies },
-                    set: { c.settingsService.settings.copies = $0 }),
-                    range: 1...10)
-            }
+            CopiesPicker(c: c)
             Toggle("Print automatically when a session finishes", isOn: Binding(
                 get: { c.settingsService.settings.autoPrint },
                 set: { c.settingsService.settings.autoPrint = $0 }))
@@ -1047,10 +1048,64 @@ private struct LayoutCard: View {
     }
 }
 
+/// Copies as ten buttons rather than a field and a stepper.
+///
+/// The value only ever runs 1–10, so there is nothing worth typing, and on a
+/// touch screen a text field means the on-screen keyboard covering the panel to
+/// enter a single digit. One tap sets it.
+private struct CopiesPicker: View {
+    @ObservedObject var c: BoothController
+    @Environment(\.touchControls) private var touch
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: touch ? 9 : 5) {
+            Text("Copies").font(.system(size: 12, weight: .medium))
+
+            FlowRow(spacing: touch ? 8 : 6, perRow: 5) {
+                (1...10).map { n in
+                    AnyView(CopiesNumber(
+                        number: n,
+                        selected: c.settings.copies == n,
+                        side: touch ? 50 : 32,
+                        accent: Color(hex: c.settings.accentHex),
+                        action: { c.settingsService.settings.copies = n }))
+                }
+            }
+
+            Text("Prints sent to the SELPHY per session.")
+                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+        }
+    }
+}
+
+private struct CopiesNumber: View {
+    let number: Int
+    let selected: Bool
+    let side: CGFloat
+    let accent: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("\(number)")
+                .font(VHS.mono(side > 40 ? 16 : 12, .bold))
+                .frame(width: side, height: side)
+                .background(selected ? accent : Color.white.opacity(0.05),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .foregroundStyle(selected ? VHS.black : VHS.phosphor)
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(selected ? accent : Palette.hairline, lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct LayoutChoice: View {
     let layout: PrintLayout
     @ObservedObject var c: BoothController
     let showsSubtitle: Bool
+    @Environment(\.touchControls) private var touch
 
     var body: some View {
         let selected = c.settings.layout == layout
@@ -1061,8 +1116,8 @@ private struct LayoutChoice: View {
         } label: {
             Group {
                 if showsSubtitle {
-                    HStack(alignment: .center, spacing: 10) {
-                        schematic.frame(width: 52)
+                    HStack(alignment: .center, spacing: touch ? 14 : 10) {
+                        schematic.frame(width: touch ? 62 : 52)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(layout.title).font(.system(size: 12, weight: .semibold))
                             Text(layout.subtitle).font(.system(size: 11)).foregroundStyle(VHS.dim)
@@ -1080,8 +1135,9 @@ private struct LayoutChoice: View {
                     }
                 }
             }
-            .padding(9)
+            .padding(touch ? 14 : 9)
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
             .background(selected ? accent.opacity(0.14) : Color.white.opacity(0.04),
                         in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
