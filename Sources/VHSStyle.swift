@@ -47,6 +47,20 @@ enum VHS {
     }
 }
 
+// MARK: - Light rendering
+
+private struct VHSLightRenderingKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// Set once on the booth stage. Read by the pieces that would otherwise
+    /// animate or blur forever, so the switch lives in one place instead of at
+    /// every call site.
+    var vhsLightRendering: Bool {
+        get { self[VHSLightRenderingKey.self] }
+        set { self[VHSLightRenderingKey.self] = newValue }
+    }
+}
+
 // MARK: - Fringed OSD text
 
 /// A line of camcorder OSD text: white glyphs with a red/cyan chromatic split and
@@ -59,8 +73,12 @@ struct VHSText: View {
     var tracking: CGFloat = 0.14      // as a fraction of size
     var fringe: CGFloat = 1.0         // 0 disables the colour split
 
+    @Environment(\.vhsLightRendering) private var light
+
     var body: some View {
-        if fringe <= 0 {
+        // Light rendering takes the flat path: the fringe is three Texts and two
+        // blurs per string, recomposited over the live view on every frame.
+        if fringe <= 0 || light {
             // Flat path: a single Text, no layers, no blur, no compositing group.
             // This is what the console uses — same typography, none of the cost.
             base.foregroundStyle(color)
@@ -153,12 +171,21 @@ struct CRTOverlay: View {
     var showsTrackingBand = true
     @State private var bandY: CGFloat = -0.2
 
+    @Environment(\.vhsLightRendering) private var light
+
+    /// The band is the single most expensive thing on the guest screen: a
+    /// full-width gradient sliding down the whole picture on a seven-second
+    /// loop that never ends, which means the entire frame is redrawn at display
+    /// rate even when the booth has been idle for an hour. Scanlines and the
+    /// vignette are static, so they stay — once drawn they cost nothing to hold.
+    private var bandVisible: Bool { showsTrackingBand && !light }
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 Scanlines(spacing: scanlineSpacing)
                 Vignette()
-                if showsTrackingBand {
+                if bandVisible {
                     LinearGradient(colors: [.clear, .white.opacity(0.045), .clear],
                                    startPoint: .top, endPoint: .bottom)
                         .frame(height: geo.size.height * 0.10)
@@ -169,7 +196,7 @@ struct CRTOverlay: View {
         }
         .allowsHitTesting(false)
         .onAppear {
-            guard showsTrackingBand else { return }
+            guard bandVisible else { return }
             withAnimation(.linear(duration: 7).repeatForever(autoreverses: false)) {
                 bandY = 1.2
             }
@@ -211,14 +238,19 @@ struct CaptureLamp: View {
     var glow: Bool = true
     @State private var on = true
 
+    @Environment(\.vhsLightRendering) private var light
+
     var body: some View {
+        let glows = glow && !light
         Circle()
             .fill(VHS.rec)
             .frame(width: size, height: size)
-            .shadow(color: glow ? VHS.rec.opacity(0.8) : .clear, radius: glow ? size * 0.5 : 0)
+            .shadow(color: glows ? VHS.rec.opacity(0.8) : .clear, radius: glows ? size * 0.5 : 0)
             .opacity(active ? (on ? 1 : 0.15) : 0.25)
             .onAppear {
-                guard active else { return }
+                // A blink is a redraw twice a second for as long as the booth is
+                // open. Steady costs nothing and still reads as a record lamp.
+                guard active, !light else { return }
                 withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { on = false }
             }
     }

@@ -136,6 +136,8 @@ struct SessionRecord: Codable, Identifiable, Hashable {
     var layout: PrintLayout
     var photos: [Photo] = []
     var printFileName: String?
+    /// Set once the animated GIF has been written into the session folder.
+    var gifFileName: String?
     var printStatus: PrintStatus = .notPrinted
     var printJobID: String?
     var copies: Int = 1
@@ -325,6 +327,19 @@ enum CropMode: String, Codable, CaseIterable, Identifiable {
     var title: String { self == .fill ? "Fill (centre crop)" : "Fit (no crop)" }
 }
 
+/// Which of the two Admin consoles the operator is using.
+enum AdminConsoleStyle: String, Codable, CaseIterable, Identifiable {
+    /// Everything: events, camera, booth button, gallery, timing, printer,
+    /// storage. What you set the booth up with.
+    case full
+    /// Session, retakes, layout and copies — the four things anyone touches once
+    /// the booth is running and the only decisions left are per-group.
+    case minimal
+
+    var id: String { rawValue }
+    var title: String { self == .full ? "Full" : "Minimal" }
+}
+
 // MARK: - Settings
 
 /// Where the guest QR code sends people.
@@ -401,6 +416,9 @@ struct AppSettings: Codable, Equatable {
     var gutterInches: Double = 0.07
     var backgroundHex: String = "#FFFFFF"
     var footerText: String = ""
+    /// File name of artwork imported through Admin, inside `BrandingAssets`.
+    /// When set it takes the place of the footer text on the print.
+    var footerImageFile: String = ""
     var footerEnabled: Bool = true
 
     // Gallery site
@@ -414,6 +432,22 @@ struct AppSettings: Codable, Equatable {
     var pagesRemote: String = ""             // git@github.com:user/repo.git or the https form
     var pagesBranch: String = "main"
     var pagesLongEdge: Int = 1600            // web copies; originals stay on the Mac
+
+    // Animated GIF
+    /// Build a looping GIF of the session's photographs and hand it over with
+    /// the print. Costs about a second of CPU at the end of a session.
+    var makeGIF: Bool = true
+    /// How many seconds of the run-up to each shot the loop replays. The GIF is
+    /// played back at real speed, so this is also the length of the loop.
+    /// Clamped to `GIFRenderer.minSeconds ... maxSeconds` when it is rendered.
+    var gifSeconds: Double = 3
+    /// Preview frames kept per second. With `gifSeconds` this sets the frame
+    /// count, and frame count is most of what a GIF weighs.
+    var gifFPS: Int = 10
+    /// Long edge in pixels. GIF has no real compression for photographs, so this
+    /// is the single number that decides the file size.
+    var gifLongEdge: Int = 480
+    var uploadGIFs: Bool = true
     var cloudinaryCloudName: String = ""     // from the Cloudinary dashboard
     var cloudinaryPreset: String = ""        // an UNSIGNED upload preset — never a secret
     var albumOutputPath: String = ""         // where album pages are written
@@ -443,6 +477,16 @@ struct AppSettings: Codable, Equatable {
     var keepOriginalsOnCard: Bool = false
 
     // Interface
+    /// Strips the guest screen of everything that redraws when nothing has
+    /// happened. For a booth running on a USB, wireless or streamed panel — an
+    /// iPad over USB, a DisplayLink adapter, screen sharing — where the whole
+    /// frame is captured, compressed and shipped every time a pixel moves, so a
+    /// decorative loop costs real bandwidth all evening. Off by default: on a
+    /// directly-attached monitor the full treatment is free.
+    var lightRendering: Bool = false
+    /// Mark off what the print will keep, on the guest screen, so people frame
+    /// themselves inside it rather than against the whole picture.
+    var framingGuide: Bool = true
     var fullScreenOnLaunch: Bool = true
     var boothDisplayID: String = ""          // CGDirectDisplayID as text; empty = pick automatically
     var openBoothOnLaunch: Bool = false
@@ -452,6 +496,11 @@ struct AppSettings: Codable, Equatable {
     var adminPasscode: String = ""
     var accentHex: String = "#E8B33C"
     var lastAdminTab: String = "Control"   // reopen where the operator left off
+    var adminConsole: AdminConsoleStyle = .full
+    /// Size the console's controls for a fingertip. Cannot be detected — an iPad
+    /// used as a monitor delivers its touches as ordinary mouse clicks — so the
+    /// operator sets it.
+    var touchControls: Bool = false
     var activeEventID: String = ""         // empty = nothing selected yet
 
     var pixelSize: CGSize { CGSize(width: 4 * Double(dpi), height: 6 * Double(dpi)) }

@@ -22,6 +22,28 @@ final class BoothController: ObservableObject {
     @Published private(set) var shotPreview: NSImage?
     @Published private(set) var currentSession: SessionRecord?
     @Published private(set) var sessionPrintImage: NSImage?
+    /// The finished loop, held for the guest screen. NSImage animates a GIF on
+    /// its own once it is in an NSImageView, which is what the finish screen uses.
+    @Published private(set) var sessionGIF: NSImage?
+
+    // MARK: - Motion capture for the GIF
+
+    /// Preview frames from the run-up to each shot, keyed by shot number.
+    ///
+    /// The GIF animates the seconds *before* each shutter, and nothing else in
+    /// the app has them: a capture yields one still. So the countdown's live
+    /// view is recorded as it goes past.
+    ///
+    /// Frames are scaled down to the size they will occupy in the finished GIF
+    /// the moment they arrive. Holding three seconds of 960px preview for eight
+    /// shots would be hundreds of megabytes of pixels that are about to be
+    /// thrown away; at cell size the same buffer is a few tens.
+    private var motionFrames: [Int: [CGImage]] = [:]
+    private var motionShot: Int?
+    private var motionFrameSize = CGSize(width: 320, height: 240)
+    private var motionCap = 30
+    private var motionInterval: TimeInterval = 0.1
+    private var motionLastAccepted = Date.distantPast
     @Published var banner: BannerMessage?
     @Published private(set) var detectedCameras: [String] = []
     @Published private(set) var isPrintBusy = false
@@ -310,6 +332,7 @@ final class BoothController: ObservableObject {
         made.onFrame = { [weak self] img in
             guard let self, self.wantsLiveView else { return }
             self.liveFrame = img
+            self.recordMotionFrame(img)
         }
         camera = made
         activeBackend = backend
@@ -460,6 +483,9 @@ final class BoothController: ObservableObject {
 
         currentSession = rec
         sessionPrintImage = nil
+        sessionGIF = nil
+        motionFrames.removeAll()
+        motionShot = nil
         sessionQRImage = nil
         shotPreview = nil
         retakeCurrentRequested = false
@@ -521,7 +547,9 @@ final class BoothController: ObservableObject {
             if Task.isCancelled { return .failed }
         }
 
-        // COUNTDOWN
+        // COUNTDOWN — and the GIF's raw material. Everything the camera shows
+        // between here and the shutter is what that cell will replay.
+        beginMotionCapture(shot: shot)
         var remaining = max(1, settings.countdownSeconds)
         while remaining > 0 {
             if Task.isCancelled { return .failed }
@@ -531,6 +559,7 @@ final class BoothController: ObservableObject {
         }
 
         // CAPTURING
+        endMotionCapture()
         if Task.isCancelled { return .failed }
         state = .capturing(shot: shot, of: total)
         var captured: Data
@@ -615,6 +644,60 @@ final class BoothController: ObservableObject {
         return true
     }
 
+    /// Starts collecting the run-up to one shot. A retake starts the shot over,
+    /// so its previous run-up goes with it.
+    private func beginMotionCapture(shot: Int) {
+        guard GIFRenderer.enabled, settings.makeGIF else { return }
+        let layout = currentSession?.layout ?? settings.layout
+        motionFrameSize = GIFRenderer.motionFrameSize(layout: layout, settings: settings)
+        motionCap = GIFRenderer.frameCount(settings: settings)
+        motionInterval = 1.0 / Double(max(GIFRenderer.minFPS, min(settings.gifFPS, GIFRenderer.maxFPS)))
+        motionLastAccepted = .distantPast
+        motionFrames[shot] = []
+        motionShot = shot
+    }
+
+    private func endMotionCapture() {
+        motionShot = nil
+    }
+
+    private func recordMotionFrame(_ img: NSImage) {
+        guard let shot = motionShot else { return }
+        let now = Date()
+        // The preview can arrive faster than the GIF needs. Sampling here rather
+        // than thinning later keeps the scaling work down too.
+        guard now.timeIntervalSince(motionLastAccepted) >= motionInterval else { return }
+        motionLastAccepted = now
+        guard let scaled = Self.scaleForMotion(img, within: motionFrameSize) else { return }
+        var frames = motionFrames[shot] ?? []
+        frames.append(scaled)
+        // Keep the tail. With a countdown longer than the window, the guests want
+        // the seconds just before the flash, not the ones where they were still
+        // arranging themselves.
+        if frames.count > motionCap { frames.removeFirst(frames.count - motionCap) }
+        motionFrames[shot] = frames
+    }
+
+    /// Scales a preview frame to fit the box, keeping its aspect ratio so the
+    /// slot's own `fill`/`fit` rule still decides what gets cropped.
+    private static func scaleForMotion(_ img: NSImage, within box: CGSize) -> CGImage? {
+        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let iw = CGFloat(cg.width), ih = CGFloat(cg.height)
+        guard iw > 0, ih > 0 else { return nil }
+        let scale = min(box.width / iw, box.height / ih, 1)
+        let w = max(2, Int((iw * scale).rounded())), h = max(2, Int((ih * scale).rounded()))
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        // Medium, not high: this runs on the main thread for every kept preview
+        // frame while a countdown is on screen.
+        ctx.interpolationQuality = .medium
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
+    }
+
     private func finishSession() async {
         guard var session = currentSession else { return }
         state = .generatingPrint
@@ -652,6 +735,42 @@ final class BoothController: ObservableObject {
             session.finishedAt = Date()
             storage.persist(session)
             currentSession = session
+        }
+
+        // The GIF is built after the print, never before: the sheet is what the
+        // guests are waiting on, and a failure here must not cost them one.
+        if GIFRenderer.enabled, settings.makeGIF {
+            let motion = motionFrames
+            let gifResult: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(try GIFRenderer.render(motion: motion, stills: urls,
+                                                           layout: layout, settings: snapshot))
+                } catch { return .failure(error) }
+            }.value
+            switch gifResult {
+            case .success(let gif):
+                do {
+                    session.gifFileName = try storage.saveGIF(gif, in: session)
+                    sessionGIF = NSImage(data: gif)
+                    storage.persist(session)
+                    currentSession = session
+                } catch {
+                    log.error("Could not save GIF for \(session.id): \(error.localizedDescription)")
+                }
+            case .failure(let e):
+                // Not fatal, and deliberately not shown to the guests: they have
+                // their photographs and their print either way.
+                if case GIFRenderer.GIFError.noMotion = e {
+                    // Worth naming the cause: the GIF is built from the countdown's
+                    // preview, so with live view off there is nothing to animate
+                    // and no amount of retrying will change that.
+                    log.warn("No GIF for \(session.id) — no live-view frames during the countdown. The GIF needs live view switched on.")
+                } else {
+                    log.warn("GIF render failed for \(session.id): \(e.localizedDescription)")
+                }
+            }
+            // Tens of megabytes of preview frames, finished with.
+            motionFrames.removeAll()
         }
 
         // With the finish screen holding for a press, the print holds with it.
@@ -880,6 +999,9 @@ final class BoothController: ObservableObject {
         awaitingContinue = false
         pendingPrint = false
         sessionPrintImage = nil
+        sessionGIF = nil
+        motionFrames.removeAll()
+        motionShot = nil
         sessionQRImage = nil
         brandQRImage = nil
         let total = session.layout.photoCount
@@ -1132,12 +1254,14 @@ final class BoothController: ObservableObject {
             .map { $0.id == session.id ? session : $0 }
         let originals = settings.uploadOriginals
         let prints = settings.uploadPrints
+        let gifs = GIFRenderer.enabled && settings.uploadGIFs
         let message = "\(event.name) — \(session.id)"
 
         try await Task.detached(priority: .utility) {
             try publisher.write(session: session, event: event, token: session.publicToken,
                                 eventToken: eventToken, from: dir, siblings: siblings,
-                                includeOriginals: originals, includePrint: prints)
+                                includeOriginals: originals, includePrint: prints,
+                                includeGIF: gifs)
             try publisher.commitAndPush(message: message)
         }.value
 
@@ -1251,10 +1375,16 @@ final class BoothController: ObservableObject {
                    let save = cloud.photoSaveURL(token: s.publicToken, fileName: "print.jpg") {
                     printShot = AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: 0)
                 }
+                var gifShot: AlbumSite.Shot?
+                if GIFRenderer.enabled, s.gifFileName != nil,
+                   let src = cloud.gifURL(token: s.publicToken),
+                   let save = cloud.gifSaveURL(token: s.publicToken) {
+                    gifShot = AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: 0)
+                }
                 return AlbumSite.Session(id: s.id, time: s.startedAt.clockStamp,
-                                         shots: shots, print: printShot)
+                                         shots: shots, print: printShot, gif: gifShot)
             }
-            .filter { !$0.shots.isEmpty || $0.print != nil }
+            .filter { !$0.shots.isEmpty || $0.print != nil || $0.gif != nil }
 
         guard !sessions.isEmpty else {
             show(.warning, "No uploaded sessions in \(event.name) yet — nothing to put in an album.")
@@ -1350,7 +1480,6 @@ final class BoothController: ObservableObject {
             storage.persist(event: event)
         }
         let token = session.publicToken
-        let eventToken = event.publishedSlug ?? token
         let dir = storage.directory(for: session)
         let longEdge = max(600, settings.pagesLongEdge)
 
@@ -1388,6 +1517,19 @@ final class BoothController: ObservableObject {
                 _ = try await cloud.upload(fileURL: web,
                                            publicID: CloudinaryService.photoPublicID(token: token,
                                                                                      fileName: "print.jpg"),
+                                           type: .image)
+                uploaded += 1
+            }
+        }
+
+        // Sent as-is. Cloudinary re-encodes a GIF it is asked to transform, and
+        // the loop was already built at its delivery size.
+        if GIFRenderer.enabled, settings.uploadGIFs, let name = session.gifFileName {
+            let src = dir.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: src.path) {
+                _ = try await cloud.upload(fileURL: src,
+                                           publicID: CloudinaryService.photoPublicID(token: token,
+                                                                                     fileName: GIFRenderer.fileName),
                                            type: .image)
                 uploaded += 1
             }

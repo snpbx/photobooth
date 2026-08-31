@@ -22,6 +22,7 @@ enum AlbumSite {
         let time: String
         let shots: [Shot]
         let print: Shot?
+        let gif: Shot?
     }
 
     struct Album {
@@ -50,6 +51,7 @@ enum AlbumSite {
                 "shots": s.shots.map { ["src": $0.src, "save": $0.save, "n": $0.index] }
             ]
             if let p = s.print { dict["print"] = ["src": p.src, "save": p.save] }
+            if let g = s.gif { dict["gif"] = ["src": g.src, "save": g.save] }
             sessions.append(dict)
         }
         let root: [String: Any] = [
@@ -227,6 +229,7 @@ enum AlbumSite {
     .shot { position:relative; margin:0; border-radius:var(--r-photo); overflow:hidden;
             background:var(--sand); aspect-ratio:3/2; }
     .shot.print { aspect-ratio:2/3; }
+    .shot.loop img { aspect-ratio:auto; }
     .shot img { width:100%; height:100%; object-fit:cover; display:block; cursor:zoom-in;
                 transition:transform .5s cubic-bezier(.2,.7,.3,1); }
     .shot:hover img { transform:scale(1.03); }
@@ -295,6 +298,7 @@ enum AlbumSite {
         head.append(el('h2', 'session-title', 'Session ' + (i + 1) + ' · ' + s.time));
         const all = [...s.shots.map(x => x.src)];
         if (s.print) all.push(s.print.src);
+        if (s.gif) all.push(s.gif.src);
         const dl = el('button', 'pill quiet', 'Download all ' + all.length);
         dl.onclick = () => downloadAll(dl, all, 'photos-' + (i + 1) + '.zip');
         head.append(dl);
@@ -312,10 +316,21 @@ enum AlbumSite {
         };
         // The 4x6 is a different shape from the frames it is made of, so it gets
         // its own column rather than punching a tall hole in the grid.
-        const body = el('div', 'session-body' + (s.print ? ' with-print' : ''));
-        if (s.print) {
+        const body = el('div', 'session-body' + ((s.print || s.gif) ? ' with-print' : ''));
+        if (s.print || s.gif) {
           const side = el('div', 'print-col');
-          side.append(shotEl(s.print, true), el('p', 'print-label', 'The print'));
+          if (s.print) side.append(shotEl(s.print, true), el('p', 'print-label', 'The print'));
+          if (s.gif) {
+            // Left as a plain img: a GIF animates on its own, and the viewer
+            // overlay would freeze it on whichever frame it was showing.
+            const fig = el('figure', 'shot loop');
+            const img = el('img');
+            img.src = s.gif.src; img.loading = 'lazy'; img.alt = 'The GIF';
+            const a = el('a', 'save', 'Save');
+            a.href = s.gif.save; a.setAttribute('download', '');
+            fig.append(img, a);
+            side.append(fig, el('p', 'print-label', 'The GIF'));
+          }
           body.append(side);
         }
         const grid = el('div', 'grid');

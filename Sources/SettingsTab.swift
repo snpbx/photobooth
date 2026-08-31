@@ -206,7 +206,9 @@ private struct BrandingCard: View {
                 get: { c.settingsService.settings.footerText },
                 set: { c.settingsService.settings.footerText = $0 }),
                 help: "Leave empty to print the event title.")
-                .disabled(!c.settings.footerEnabled)
+                .disabled(!c.settings.footerEnabled || hasFooterImage)
+
+            footerImageRow
 
             LabeledRow(label: "Accent colour") {
                 HexColorField(hex: Binding(
@@ -218,6 +220,72 @@ private struct BrandingCard: View {
                     get: { c.settingsService.settings.backgroundHex },
                     set: { c.settingsService.settings.backgroundHex = $0 }))
             }
+        }
+    }
+
+    private var hasFooterImage: Bool {
+        BrandingAssets.url(for: c.settings.footerImageFile) != nil
+    }
+
+    /// Artwork for the footer, in place of the typed text.
+    ///
+    /// Shown as a thumbnail on the print's own background colour rather than on
+    /// the console's black, because a white logo on a white 4×6 is invisible and
+    /// an operator should find that out here rather than on the first sheet.
+    @ViewBuilder
+    private var footerImageRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Footer image").font(.system(size: 12, weight: .medium))
+
+            if let url = BrandingAssets.url(for: c.settings.footerImageFile),
+               let img = NSImage(contentsOf: url) {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: 56)
+                    .padding(6)
+                    .background(Color(hex: c.settings.backgroundHex))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.hairline))
+            }
+
+            HStack(spacing: 8) {
+                Button(hasFooterImage ? "Replace Image…" : "Choose Image…") { chooseFooterImage() }
+                if hasFooterImage {
+                    Button("Remove") {
+                        let old = c.settingsService.settings.footerImageFile
+                        c.settingsService.settings.footerImageFile = ""
+                        BrandingAssets.remove(old)
+                    }
+                }
+            }
+            .font(.system(size: 12))
+
+            Text(hasFooterImage
+                 ? "Printed in place of the footer text. PNG transparency is kept, so a logo sits on the print background."
+                 : "Optional. A PNG, JPEG or TIFF printed in place of the footer text — a client logo, say. It is copied into the app's own folder, so it keeps printing after the original is moved or deleted.")
+                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .disabled(!c.settings.footerEnabled)
+    }
+
+    private func chooseFooterImage() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .heic, .image]
+        panel.prompt = "Use Image"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let previous = c.settingsService.settings.footerImageFile
+            let name = try BrandingAssets.importImage(from: url)
+            c.settingsService.settings.footerImageFile = name
+            // Only after the new one is safely in place.
+            if previous != name { BrandingAssets.remove(previous) }
+        } catch {
+            c.show(.warning, error.localizedDescription)
         }
     }
 
@@ -318,6 +386,69 @@ private struct CameraAdvancedCard: View {
     @ObservedObject var c: BoothController
 
     var body: some View {
+        // Hidden while the GIF is being reworked. See `GIFRenderer.enabled`.
+        if GIFRenderer.enabled {
+        SectionCard(title: "Animated GIF") {
+            LabeledRow(label: "Make a GIF",
+                       help: "Animates the print's own layout: every slot replays the seconds before its shutter fired, all at once. Needs live view on during the countdown — that is where the motion comes from.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.makeGIF },
+                    set: { c.settingsService.settings.makeGIF = $0 }))
+                    .labelsHidden()
+            }
+
+            LabeledRow(label: "Run-up",
+                       help: "How much of the countdown each slot replays, ending at the shutter. Played back at real speed, so it is also the length of the loop. A countdown shorter than this gives whatever it has.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.gifSeconds },
+                    set: { c.settingsService.settings.gifSeconds = $0 })) {
+                        ForEach([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], id: \.self) { v in
+                            Text("\(Int(v)) seconds").tag(v)
+                        }
+                }
+                .labelsHidden().frame(width: 140)
+                .disabled(!c.settings.makeGIF)
+            }
+
+            LabeledRow(label: "Smoothness",
+                       help: "Frames kept per second. With the run-up this sets the frame count, and frame count is most of what a GIF weighs — 15 fps is half again the size of 10 for motion few people will look at twice.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.gifFPS },
+                    set: { c.settingsService.settings.gifFPS = $0 })) {
+                        Text("8 fps — smallest").tag(8)
+                        Text("10 fps — recommended").tag(10)
+                        Text("12 fps").tag(12)
+                        Text("15 fps — smoothest").tag(15)
+                }
+                .labelsHidden().frame(width: 200)
+                .disabled(!c.settings.makeGIF)
+            }
+
+            LabeledRow(label: "Size",
+                       help: "Long edge of the sheet. With frame count this decides what a guest downloads on venue wifi. \(gifSizeNote)") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.gifLongEdge },
+                    set: { c.settingsService.settings.gifLongEdge = $0 })) {
+                        Text("360 px — smallest").tag(360)
+                        Text("480 px — recommended").tag(480)
+                        Text("640 px — larger").tag(640)
+                        Text("800 px — largest").tag(800)
+                }
+                .labelsHidden().frame(width: 200)
+                .disabled(!c.settings.makeGIF)
+            }
+
+            LabeledRow(label: "Put it on the site",
+                       help: "Uploads the GIF with the photographs, so it is on the session page and in the album.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.uploadGIFs },
+                    set: { c.settingsService.settings.uploadGIFs = $0 }))
+                    .labelsHidden()
+                    .disabled(!c.settings.makeGIF)
+            }
+        }
+        }
+
         SectionCard(title: "Camera Advanced") {
             LabeledRow(label: "Live view frame rate",
                        help: "Lower this if the USB link struggles or the 6D warms up during long events.") {
@@ -370,6 +501,33 @@ private struct InterfaceCard: View {
 
     var body: some View {
         SectionCard(title: "Interface") {
+            LabeledRow(label: "Console",
+                       help: "Full is everything — events, camera, printer, storage — for setting the booth up. Minimal is the session, retakes, layout and copies, which is all anyone touches once it is running. The toolbar button switches between them.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.adminConsole },
+                    set: { c.settingsService.settings.adminConsole = $0 })) {
+                        ForEach(AdminConsoleStyle.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden().frame(width: 180)
+            }
+
+            LabeledRow(label: "Touch controls",
+                       help: "Sizes buttons, steppers, toggles and text fields for a fingertip — Apple's 44pt minimum, about 8.5mm on an iPad at 2×. Switch it on when the console is on a touch screen: an iPad used as a monitor sends its taps to macOS as ordinary clicks, so the app cannot tell on its own.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.touchControls },
+                    set: { c.settingsService.settings.touchControls = $0 }))
+                    .labelsHidden()
+            }
+
+            LabeledRow(label: "Framing guide",
+                       help: "Marks off what the print will keep on the guest screen, dimming what gets trimmed, with thirds to frame against. The print fills each slot, so the edges of what a guest can see do not survive.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.framingGuide },
+                    set: { c.settingsService.settings.framingGuide = $0 }))
+                    .labelsHidden()
+            }
+
             Toggle("Open the booth window full screen", isOn: Binding(
                 get: { c.settingsService.settings.fullScreenOnLaunch },
                 set: { c.settingsService.settings.fullScreenOnLaunch = $0 }))
@@ -457,6 +615,14 @@ private struct MaintenanceCard: View {
                 .font(.system(size: 11)).foregroundStyle(VHS.dim)
         }
     }
+}
+
+/// Measured on photographic content, 3-second run-up at 10 fps, across the three
+/// layouts. Animating the whole sheet costs a great deal more than a slideshow
+/// of stills did — thirty frames rather than four — so these are worth knowing
+/// before a night on venue wifi.
+private var gifSizeNote: String {
+    "At 3s and 10 fps: roughly 1.1–1.5 MB at 360 px, 1.9–2.5 MB at 480 and 3.6–4.5 MB at 640. Frame rate scales it in direct proportion."
 }
 
 // MARK: - Helpers

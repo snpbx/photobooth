@@ -166,7 +166,28 @@ enum LayoutRenderer {
         let canvas = settings.pixelSize
         let images = photos.map { loadOrientedImage(at: $0) }
 
-        let cg = try draw(canvas: canvas, settings: settings) { ctx in
+        let cg = try composite(images: images, layout: layout, canvas: canvas,
+                               settings: settings, qrPayload: qrPayload)
+        guard let data = jpegData(from: cg, dpi: settings.dpi) else { throw RenderError.encodeFailed }
+        return data
+    }
+
+    /// Composes one sheet from images already in memory, at any canvas size.
+    ///
+    /// Split out of `renderPrint` so the animated GIF can call it once per frame
+    /// with a different set of pictures. That sharing is the point: the loop and
+    /// the sheet come out of the same slot geometry, the same crop rule and the
+    /// same footer, so they cannot drift apart when a margin setting changes.
+    ///
+    /// - Parameter images: indexed by `Slot.photoIndex`, so a layout that repeats
+    ///   a photograph — the duplicate strip prints each one twice — needs only
+    ///   one entry per distinct shot.
+    static func composite(images: [CGImage?],
+                          layout: PrintLayout,
+                          canvas: CGSize,
+                          settings: AppSettings,
+                          qrPayload: String? = nil) throws -> CGImage {
+        try draw(canvas: canvas, settings: settings) { ctx in
             for slot in slots(for: layout, canvas: canvas, settings: settings) {
                 guard slot.photoIndex < images.count, let img = images[slot.photoIndex] else {
                     drawPlaceholder(ctx, rect: slot.rect, canvasH: canvas.height, number: slot.photoIndex + 1)
@@ -181,9 +202,14 @@ enum LayoutRenderer {
                 }
             }
         }
+    }
 
-        guard let data = jpegData(from: cg, dpi: settings.dpi) else { throw RenderError.encodeFailed }
-        return data
+    /// The largest slot on a given canvas — how big a live-view frame has to be
+    /// kept for the GIF, and no bigger.
+    static func largestSlotSize(for layout: PrintLayout, canvas: CGSize, settings: AppSettings) -> CGSize {
+        slots(for: layout, canvas: canvas, settings: settings)
+            .map(\.rect.size)
+            .max { $0.width * $0.height < $1.width * $1.height } ?? canvas
     }
 
     /// Low-resolution schematic used for the layout picker in Admin.
@@ -201,6 +227,47 @@ enum LayoutRenderer {
             }
         }) else { return nil }
         return NSImage(cgImage: cg, size: NSSize(width: canvas.width, height: canvas.height))
+    }
+
+    // MARK: - Footer artwork
+
+    /// Loaded once and kept, because a print, the layout schematic and the Admin
+    /// preview all ask for it and decoding a 2400px PNG each time is wasted work.
+    /// Keyed by file name, which `BrandingAssets` makes unique per import, so a
+    /// replaced logo can never be served from the old entry.
+    private static let footerImageCache = NSCache<NSString, CGImageBox>()
+    private final class CGImageBox { let image: CGImage; init(_ i: CGImage) { image = i } }
+
+    static func footerImage(_ settings: AppSettings) -> CGImage? {
+        let name = settings.footerImageFile
+        guard !name.isEmpty else { return nil }
+        if let hit = footerImageCache.object(forKey: name as NSString) { return hit.image }
+        guard let url = BrandingAssets.url(for: name),
+              let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let img = CGImageSourceCreateImageAtIndex(src, 0, nil)
+        else { return nil }
+        footerImageCache.setObject(CGImageBox(img), forKey: name as NSString)
+        return img
+    }
+
+    /// Draws artwork centred in a band, scaled to fit and never enlarged past
+    /// its own resolution — a small logo blown up to fill a strip looks worse
+    /// than the same logo printed at the size it was drawn.
+    ///
+    /// `band` is already in CoreGraphics' bottom-left space. Every caller works
+    /// from the footer region the surrounding code has flipped once, so flipping
+    /// again here would put the artwork off the top of the sheet.
+    private static func drawFooterArt(_ ctx: CGContext, image: CGImage, in band: CGRect) {
+        let r = band
+        guard r.width > 0, r.height > 0 else { return }
+        let iw = CGFloat(image.width), ih = CGFloat(image.height)
+        guard iw > 0, ih > 0 else { return }
+        let scale = min(r.width / iw, r.height / ih)
+        let w = iw * scale, h = ih * scale
+        ctx.saveGState()
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
+        ctx.restoreGState()
     }
 
     // MARK: - Drawing primitives
@@ -329,11 +396,16 @@ enum LayoutRenderer {
                      color: subInk,
                      tracking: capSize * 0.16)
 
+            let nameBand = CGRect(x: textRect.minX, y: textRect.minY + footerH * 0.50,
+                                  width: textRect.width, height: footerH * 0.30)
+            if let art = footerImage(settings) {
+                drawFooterArt(ctx, image: art, in: nameBand)
+                return
+            }
             guard !title.isEmpty else { return }
             let size = footerH * 0.22
             drawText(ctx, title.uppercased(),
-                     centeredIn: CGRect(x: textRect.minX, y: textRect.minY + footerH * 0.50,
-                                        width: textRect.width, height: footerH * 0.30),
+                     centeredIn: nameBand,
                      fontSize: size,
                      weight: .semibold,
                      color: ink,
@@ -341,6 +413,11 @@ enum LayoutRenderer {
             return
         }
 
+        // No code to make room for, so artwork gets the whole band.
+        if let art = footerImage(settings) {
+            drawFooterArt(ctx, image: art, in: r.insetBy(dx: 0, dy: footerH * 0.12))
+            return
+        }
         guard !title.isEmpty else { return }
         let size = footerH * 0.40
         let band = CGRect(x: textRect.minX, y: textRect.minY + footerH * 0.22,
@@ -388,11 +465,16 @@ enum LayoutRenderer {
                  color: CGColor(gray: 0.42, alpha: 1),
                  tracking: capSize * 0.14)
 
+        let nameBand = CGRect(x: below.minX, y: below.minY + below.height * 0.44,
+                              width: below.width, height: below.height * 0.5)
+        if let art = footerImage(settings) {
+            drawFooterArt(ctx, image: art, in: nameBand)
+            return
+        }
         guard !title.isEmpty else { return }
         let size = min(footerH * 0.125, below.height * 0.46)
         drawText(ctx, title.uppercased(),
-                 centeredIn: CGRect(x: below.minX, y: below.minY + below.height * 0.44,
-                                    width: below.width, height: below.height * 0.5),
+                 centeredIn: nameBand,
                  fontSize: size,
                  weight: .semibold,
                  color: ink,
@@ -507,7 +589,7 @@ enum LayoutRenderer {
         return out as Data
     }
 
-    private static func cgColor(_ hex: String) -> CGColor {
+    static func cgColor(_ hex: String) -> CGColor {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         guard s.count == 6, let v = UInt32(s, radix: 16) else { return CGColor(gray: 1, alpha: 1) }

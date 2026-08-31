@@ -33,7 +33,11 @@ struct AdminScreen: View {
 
             Group {
                 switch tab.wrappedValue {
-                case .control:  ControlTab(c: c)
+                case .control:
+                    switch c.settings.adminConsole {
+                    case .full:    ControlTab(c: c)
+                    case .minimal: MinimalControlTab(c: c)
+                    }
                 case .gallery:  GalleryTab(c: c)
                 case .settings: SettingsTab(c: c)
                 case .log:      LogTab()
@@ -44,6 +48,12 @@ struct AdminScreen: View {
         }
         .background(VHS.black)
         .environment(\.colorScheme, .dark)
+        .environment(\.touchControls, c.settings.touchControls)
+        // `controlSize` is what moves the native controls — text fields, pickers,
+        // the segmented tab bar — which this app does not draw itself and so
+        // cannot pad. It costs nothing when touch is off.
+        .controlSize(c.settings.touchControls ? .large : .regular)
+        .modifier(TouchToggleStyling(enabled: c.settings.touchControls))
         .tint(VHS.amber)
         .overlay(alignment: .bottom) {
             if let b = c.banner {
@@ -76,6 +86,23 @@ private struct AdminToolbar: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
     }
 
+    /// Swaps the Control tab between the two consoles. Only shown there, since
+    /// it is the only tab it changes.
+    @ViewBuilder private var consoleToggle: some View {
+        if tab == .control {
+            let minimal = c.settings.adminConsole == .minimal
+            Button {
+                c.settingsService.settings.adminConsole = minimal ? .full : .minimal
+            } label: {
+                Image(systemName: minimal
+                      ? "arrow.up.left.and.arrow.down.right"
+                      : "arrow.down.right.and.arrow.up.left")
+            }
+            .buttonStyle(.borderless)
+            .help(minimal ? "Full console" : "Minimal console")
+        }
+    }
+
     @ViewBuilder private var full: some View {
         title
         tabs
@@ -85,6 +112,7 @@ private struct AdminToolbar: View {
         StatusPill(icon: "printer", label: c.printer.state.label, tint: c.printer.state.tint)
         StatusPill(icon: "internaldrive", label: "\(c.storage.freeSpaceMB.asDiskSize) free",
                    tint: c.storage.freeSpaceMB < 500 ? VHS.amber : .secondary)
+        consoleToggle
         boothButton
     }
 
@@ -93,6 +121,7 @@ private struct AdminToolbar: View {
         Spacer(minLength: 8)
         StatusPill(icon: "camera", label: shortCamera, tint: c.cameraState.tint)
         StatusPill(icon: "printer", label: shortPrinter, tint: c.printer.state.tint)
+        consoleToggle
         boothButton
     }
 
@@ -101,6 +130,7 @@ private struct AdminToolbar: View {
         Spacer(minLength: 4)
         StatusDot(tint: c.cameraState.tint)
         StatusDot(tint: c.printer.state.tint)
+        consoleToggle
         boothButton
     }
 
@@ -242,6 +272,72 @@ struct ResponsiveColumns: View {
     }
 }
 
+// MARK: - Minimal control tab
+
+/// The console stripped to what anyone actually touches during a run: the
+/// session, retakes, the layout and how many copies.
+///
+/// Deliberately built from the very same `SessionCard` and `LayoutCard` the full
+/// console uses rather than trimmed copies of them. Two hand-maintained versions
+/// of a Start button is how one of them ends up wrong at two in the morning.
+///
+/// Everything left out — events, camera, booth button, gallery, timing, printer,
+/// storage — is what a booth is *set up* with, and is one press away in the full
+/// console.
+private struct MinimalControlTab: View {
+    @ObservedObject var c: BoothController
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                eventBar
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 34) {
+                        SessionCard(c: c).frame(maxWidth: .infinity)
+                        LayoutCard(c: c).frame(maxWidth: .infinity)
+                    }
+                    VStack(spacing: 22) {
+                        SessionCard(c: c)
+                        LayoutCard(c: c)
+                    }
+                }
+            }
+            .frame(maxWidth: 1120)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+        }
+    }
+
+    /// Which client is being shot — the one piece of the full console that has
+    /// to survive here. `startSession()` refuses to run without an event, and
+    /// the events themselves are chosen in the full console, so a minimal view
+    /// that simply omitted this would strand the operator with a dead Start
+    /// button and nothing explaining it.
+    @ViewBuilder private var eventBar: some View {
+        if let e = c.activeEvent {
+            HStack(spacing: 8) {
+                OSDLabel(text: "EVENT", size: 10, weight: .bold, color: VHS.dim, tracking: 0.22)
+                Text(e.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+            }
+        } else {
+            HStack(spacing: 10) {
+                Label("No event selected — a session cannot start. Events are chosen in the full console.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(VHS.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button("Full Console") { c.settingsService.settings.adminConsole = .full }
+                    .buttonStyle(QuietButtonStyle())
+            }
+        }
+    }
+}
+
 // MARK: Camera card
 
 private struct CameraCard: View {
@@ -286,8 +382,15 @@ private struct CameraCard: View {
                                 placeholder: c.settings.liveViewEnabled
                                     ? "No live view — connect the camera"
                                     : "Live view is switched off")
-                    CropGuide(aspect: LayoutRenderer.cellAspect(for: c.settings.layout, settings: c.settings),
-                              tint: Color(hex: c.settings.accentHex))
+                    // Same guide the guests get, drawn plainly: the console is
+                    // for checking the crop, not for framing anyone.
+                    FramingGuide(imageAspect: (c.liveFrame?.size.width ?? 4)
+                                            / max(1, c.liveFrame?.size.height ?? 3),
+                                 cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
+                                                                      settings: c.settings),
+                                 cropMode: c.settings.cropMode,
+                                 tint: Color(hex: c.settings.accentHex),
+                                 dims: false, thirds: false)
                         .padding(8)
                 }
             }
@@ -539,14 +642,17 @@ private struct RetakeNumber: View {
     let enabled: Bool
     let action: () -> Void
 
+    @Environment(\.touchControls) private var touch
+
     var body: some View {
         Button(action: action) {
             Text("\(number)")
-                .font(VHS.mono(12, .bold))
-                .frame(width: 30, height: 28)
+                .font(VHS.mono(touch ? 15 : 12, .bold))
+                .frame(width: touch ? 48 : 30, height: touch ? 44 : 28)
                 .background(background)
                 .foregroundStyle(foreground)
                 .overlay(Rectangle().stroke(border, lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -820,17 +926,27 @@ struct IntStepper: View {
     @Binding var value: Int
     let range: ClosedRange<Int>
     var suffix: String = ""
+    @Environment(\.touchControls) private var touch
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: touch ? 8 : 6) {
             TextField("", value: $value, format: .number)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 52)
+                .frame(width: touch ? 68 : 52)
                 .multilineTextAlignment(.trailing)
             if !suffix.isEmpty {
                 Text(suffix).font(.system(size: 11)).foregroundStyle(VHS.dim)
             }
-            Stepper("", value: $value, in: range).labelsHidden()
+            if touch {
+                // The native stepper is two 11pt arrows stacked — a target no
+                // fingertip can pick between. Two square buttons instead.
+                StepPad(symbol: "minus") { value = max(range.lowerBound, value - 1) }
+                    .disabled(value <= range.lowerBound)
+                StepPad(symbol: "plus") { value = min(range.upperBound, value + 1) }
+                    .disabled(value >= range.upperBound)
+            } else {
+                Stepper("", value: $value, in: range).labelsHidden()
+            }
         }
         .onChange(of: value) { _, v in
             if v < range.lowerBound { value = range.lowerBound }
@@ -844,22 +960,50 @@ struct DoubleStepper: View {
     let range: ClosedRange<Double>
     var step: Double = 0.5
     var suffix: String = ""
+    @Environment(\.touchControls) private var touch
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: touch ? 8 : 6) {
             TextField("", value: $value, format: .number.precision(.fractionLength(0...2)))
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 58)
+                .frame(width: touch ? 74 : 58)
                 .multilineTextAlignment(.trailing)
             if !suffix.isEmpty {
                 Text(suffix).font(.system(size: 11)).foregroundStyle(VHS.dim)
             }
-            Stepper("", value: $value, in: range, step: step).labelsHidden()
+            if touch {
+                StepPad(symbol: "minus") { value = max(range.lowerBound, value - step) }
+                    .disabled(value <= range.lowerBound)
+                StepPad(symbol: "plus") { value = min(range.upperBound, value + step) }
+                    .disabled(value >= range.upperBound)
+            } else {
+                Stepper("", value: $value, in: range, step: step).labelsHidden()
+            }
         }
         .onChange(of: value) { _, v in
             if v < range.lowerBound { value = range.lowerBound }
             if v > range.upperBound { value = range.upperBound }
         }
+    }
+}
+
+/// One square of a touch stepper. 44 × 44, which is the smallest target a
+/// fingertip hits reliably — about 8.5mm on an iPad at 2×.
+private struct StepPad: View {
+    let symbol: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.06))
+                .foregroundStyle(isEnabled ? VHS.phosphor : VHS.dim.opacity(0.5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1081,6 +1225,17 @@ private struct BoothWindowCard: View {
                 get: { c.settingsService.settings.fullScreenOnLaunch },
                 set: { c.settingsService.settings.fullScreenOnLaunch = $0 }))
                 .font(.system(size: 12))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Light rendering", isOn: Binding(
+                    get: { c.settingsService.settings.lightRendering },
+                    set: { c.settingsService.settings.lightRendering = $0 }))
+                    .font(.system(size: 12))
+                Text("For a booth screen carried over USB, wireless or screen sharing. Stops the drifting tracking band, the blinking lamps and the colour fringing, so the guest screen only redraws when something actually changes. Leave off on a directly-attached monitor.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(VHS.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Toggle("Open the booth window at launch", isOn: Binding(
                 get: { c.settingsService.settings.openBoothOnLaunch },

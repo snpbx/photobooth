@@ -9,13 +9,24 @@ struct PhotoboothScreen: View {
     @ObservedObject private var clock = OSDClock.shared
 
     var body: some View {
-        FourThreeStage(background: VHS.black) { size in
+        BoothStage(background: VHS.black) { size in
             let m = StageMetrics(size: size)
             ZStack {
                 VHS.black
 
                 // The picture sits behind the overlay, as it does in a viewfinder.
                 ViewfinderImage(c: c, m: m)
+
+                // Only while there is someone to frame: not over the shutter
+                // flash, the photograph just taken, or the finish screen.
+                if c.settings.framingGuide, showsFramingGuide, let live = c.liveFrame {
+                    FramingGuide(imageAspect: live.size.width / max(1, live.size.height),
+                                 cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
+                                                                      settings: c.settings),
+                                 cropMode: c.settings.cropMode,
+                                 tint: Color(hex: c.settings.accentHex),
+                                 lineWidth: max(1, m.pt(0.25)))
+                }
 
                 OSDLayer(c: c, m: m, now: clock.now)
 
@@ -26,6 +37,20 @@ struct PhotoboothScreen: View {
             .animation(.easeInOut(duration: 0.22), value: c.state)
         }
         .background(VHS.black)
+        .environment(\.vhsLightRendering, c.settings.lightRendering)
+    }
+
+    /// States where the guest is looking at themselves and can still move.
+    private var showsFramingGuide: Bool {
+        switch c.state {
+        case .idle:
+            // Only when the idle screen is actually showing the camera.
+            return c.settings.idleLiveView
+        case .starting, .countdown, .interval, .retaking:
+            return true
+        case .capturing, .photoPreview, .generatingPrint, .printing, .complete, .failed:
+            return false
+        }
     }
 }
 
@@ -249,6 +274,7 @@ private struct OSDLayer: View {
 // MARK: - Idle
 
 private struct IdleCentre: View {
+    @Environment(\.vhsLightRendering) private var light
     @ObservedObject var c: BoothController
     let m: StageMetrics
     @State private var blink = true
@@ -305,6 +331,7 @@ private struct IdleCentre: View {
             }
         }
         .onAppear {
+            guard !light else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { blink = false }
         }
     }
@@ -358,6 +385,7 @@ private struct OSDBanner: View {
 // MARK: - Complete
 
 private struct CompleteCentre: View {
+    @Environment(\.vhsLightRendering) private var light
     @ObservedObject var c: BoothController
     let m: StageMetrics
     @State private var blink = true
@@ -383,6 +411,19 @@ private struct CompleteCentre: View {
                         .frame(maxWidth: .infinity)
                 }
 
+                // The loop, so guests can see there is one to take before they
+                // ever scan the code. Given its own fixed column for the same
+                // reason as the QR cards: the print keeps whatever is left.
+                if GIFRenderer.enabled, let gif = c.sessionGIF {
+                    VStack(spacing: m.pt(1.1)) {
+                        AnimatedImage(image: gif, animates: !light)
+                            .aspectRatio(gif.size.width / max(1, gif.size.height),
+                                         contentMode: .fit)
+                        VHSText(text: "YOUR GIF", size: m.pt(1.7), color: VHS.dim)
+                    }
+                    .frame(width: m.pt(20))
+                }
+
                 // One card or two, depending on what the operator asked the code
                 // to point at. Two are stacked and narrowed rather than set side
                 // by side, so the print keeps the width it needs.
@@ -405,6 +446,7 @@ private struct CompleteCentre: View {
         // Clears the clock, date stamp and tape gauge along the bottom edge.
         .padding(.bottom, m.pt(10))
         .onAppear {
+            guard !light else { return }
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { blink = false }
         }
     }

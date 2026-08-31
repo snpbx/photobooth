@@ -84,8 +84,8 @@ struct PagesPublisher {
         if !isRepo(url) {
             try git(["init", "-b", branch], in: url)
         }
-        try? git(["config", "user.name", authorName], in: url)
-        try? git(["config", "user.email", authorEmail], in: url)
+        _ = try? git(["config", "user.name", authorName], in: url)
+        _ = try? git(["config", "user.email", authorEmail], in: url)
 
         // Jekyll would otherwise ignore any directory beginning with an
         // underscore and rewrite the pages it does process.
@@ -115,7 +115,7 @@ struct PagesPublisher {
                 try git(["remote", "add", "origin", trimmed], in: url)
             }
         }
-        try? git(["add", "-A"], in: url)
+        _ = try? git(["add", "-A"], in: url)
         // Nothing to commit is a perfectly good outcome on a re-run.
         _ = try? git(["commit", "-m", "Set up photobooth gallery"], in: url)
     }
@@ -173,7 +173,8 @@ struct PagesPublisher {
                from dir: URL,
                siblings: [SessionRecord],
                includeOriginals: Bool,
-               includePrint: Bool) throws -> Published {
+               includePrint: Bool,
+               includeGIF: Bool) throws -> Published {
         guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
 
         let sessionDir = repo.appendingPathComponent(Self.sessionPath(token: token), isDirectory: true)
@@ -204,9 +205,24 @@ struct PagesPublisher {
             }
         }
 
+        // Copied, not re-encoded: `webCopy` makes JPEGs, and the GIF was already
+        // built at its delivery size.
+        var gifName: String?
+        if GIFRenderer.enabled, includeGIF, let g = rec.gifFileName {
+            let src = dir.appendingPathComponent(g)
+            if FileManager.default.fileExists(atPath: src.path) {
+                let dest = sessionDir.appendingPathComponent(GIFRenderer.fileName)
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.copyItem(at: src, to: dest)
+                gifName = GIFRenderer.fileName
+                bytes += Int64((try? dest.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+        }
+
         try writeSessionPage(session: rec, event: event, token: token, eventToken: eventToken,
                              photos: names.map { PagesTemplate.PhotoRef(src: $0) },
-                             print: printName.map { PagesTemplate.PhotoRef(src: $0) })
+                             print: printName.map { PagesTemplate.PhotoRef(src: $0) },
+                             gif: gifName.map { PagesTemplate.PhotoRef(src: $0) })
 
         let entries: [PagesTemplate.AlbumEntry] = siblings
             .filter { !$0.publicToken.isEmpty }
@@ -234,7 +250,8 @@ struct PagesPublisher {
                           token: String,
                           eventToken: String,
                           photos: [PagesTemplate.PhotoRef],
-                          print printRef: PagesTemplate.PhotoRef?) throws {
+                          print printRef: PagesTemplate.PhotoRef?,
+                          gif gifRef: PagesTemplate.PhotoRef? = nil) throws {
         guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
         let dir = repo.appendingPathComponent(Self.sessionPath(token: token), isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -243,6 +260,7 @@ struct PagesPublisher {
                                              session: rec,
                                              photos: photos,
                                              print: printRef,
+                                             gif: gifRef,
                                              albumHref: "../../\(Self.eventPath(token: eventToken))/",
                                              brandLink: brandLink,
                                              brandLabel: brandLabel)

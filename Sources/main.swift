@@ -30,14 +30,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Admin window
 
     private func buildAdminWindow() {
+        // 1360 × 880 is the console at its most comfortable, not a requirement.
+        // The booth's own monitor decides: see `NSScreen.fitting`.
+        let screen = NSScreen.main ?? NSScreen.screens[0]
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1360, height: 880),
+            contentRect: NSRect(origin: .zero,
+                                size: screen.fitting(NSSize(width: 1360, height: 880), margin: 20)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         w.title = "Photobooth — Admin"
         w.identifier = NSUserInterfaceItemIdentifier(WindowRole.admin.rawValue)
-        w.minSize = NSSize(width: 680, height: 480)
+        w.minSize = screen.fitting(NSSize(width: 680, height: 480))
         w.setFrameAutosaveName("PhotoboothAdminWindow")
+        // The autosaved frame was recorded on whatever display was attached last
+        // time, which may have been larger than this one.
+        w.setContentSize(screen.fitting(w.contentRect(forFrameRect: w.frame).size, margin: 20))
         w.center()
         w.delegate = self
         w.collectionBehavior.insert(.fullScreenPrimary)
@@ -88,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered, defer: false, screen: screen)
         w.title = "Photobooth"
         w.identifier = NSUserInterfaceItemIdentifier(WindowRole.booth.rawValue)
-        w.minSize = NSSize(width: 640, height: 480)
+        w.minSize = screen.fitting(NSSize(width: 640, height: 480))
         w.delegate = self
         w.isReleasedWhenClosed = false
         w.collectionBehavior.insert(.fullScreenPrimary)

@@ -12,9 +12,11 @@ final class SettingsService: ObservableObject {
     private let url: URL
     private var saveWork: DispatchWorkItem?
 
-    init() {
-        // PHOTOBOOTH_SUPPORT_DIR lets the screenshot harness run against a scratch
-        // config instead of overwriting the operator's live settings.
+    /// Where settings and any uploaded branding live.
+    ///
+    /// PHOTOBOOTH_SUPPORT_DIR lets the screenshot harness run against a scratch
+    /// config instead of overwriting the operator's live settings.
+    nonisolated static var supportDirectory: URL {
         let base: URL
         if let override = ProcessInfo.processInfo.environment["PHOTOBOOTH_SUPPORT_DIR"], !override.isEmpty {
             base = URL(fileURLWithPath: override, isDirectory: true)
@@ -24,8 +26,11 @@ final class SettingsService: ObservableObject {
                 .appendingPathComponent("Photobooth", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        url = base.appendingPathComponent("settings.json")
+        return base
+    }
 
+    init() {
+        url = Self.supportDirectory.appendingPathComponent("settings.json")
         settings = Self.load(from: url)
     }
 

@@ -262,6 +262,18 @@ final class PhotoStorageService: ObservableObject {
         return name
     }
 
+    func saveGIF(_ gif: Data, in session: SessionRecord) throws -> String {
+        let name = GIFRenderer.fileName
+        let dest = directory(for: session).appendingPathComponent(name)
+        do {
+            try gif.write(to: dest, options: .atomic)
+        } catch {
+            throw StorageError.writeFailed(error.localizedDescription)
+        }
+        Log.shared.info("Saved \(session.id)/\(name) (\(gif.count / 1024) KB)")
+        return name
+    }
+
     private func writeMetadata(_ rec: SessionRecord) {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -362,10 +374,12 @@ final class PhotoStorageService: ObservableObject {
                                 width: 0, height: 0))
         }
         let hasPrint = files.contains("print.jpg")
+        let hasGIF = files.contains(GIFRenderer.fileName)
         var rec = SessionRecord(id: id, eventID: EventRecord.unfiledID,
                                 startedAt: started, layout: .duplicateStrips)
         rec.photos = photos
         rec.printFileName = hasPrint ? "print.jpg" : nil
+        rec.gifFileName = hasGIF ? GIFRenderer.fileName : nil
         rec.finishedAt = photos.last?.capturedAt
         Log.shared.warn("Recovered session \(id) from disk (\(photos.count) photos, metadata was missing)")
         return rec

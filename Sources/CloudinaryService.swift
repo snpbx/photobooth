@@ -78,7 +78,12 @@ struct CloudinaryService {
         let cloud = cloudName.trimmingCharacters(in: .whitespaces)
         guard !cloud.isEmpty else { return nil }
         let stem = (saveAs as NSString).deletingPathExtension
-        return URL(string: "\(deliveryBase)/\(cloud)/image/upload/fl_attachment:\(stem)/\(publicID).jpg")
+        let ext = (saveAs as NSString).pathExtension.lowercased()
+        // The delivery extension has to match what was uploaded: asking for the
+        // GIF as .jpg hands the guest a still frame, which is exactly the thing
+        // they were trying to save.
+        let suffix = ext.isEmpty ? "jpg" : ext
+        return URL(string: "\(deliveryBase)/\(cloud)/image/upload/fl_attachment:\(stem)/\(publicID).\(suffix)")
     }
 
     func url(for type: ResourceType, publicID: String) -> URL? {
@@ -98,6 +103,22 @@ struct CloudinaryService {
         Self.attachmentURL(cloudName: config.cloudName,
                            publicID: Self.photoPublicID(token: token, fileName: fileName),
                            saveAs: fileName)
+    }
+
+    /// GIFs are uploaded as images, so they share the photograph's addressing —
+    /// only the delivery extension differs, and it has to be `.gif` or the CDN
+    /// returns a single flattened frame.
+    func gifURL(token: String) -> URL? {
+        guard let base = url(for: .image,
+                             publicID: Self.photoPublicID(token: token, fileName: GIFRenderer.fileName))
+        else { return nil }
+        return URL(string: base.absoluteString + ".gif")
+    }
+
+    func gifSaveURL(token: String) -> URL? {
+        Self.attachmentURL(cloudName: config.cloudName,
+                           publicID: Self.photoPublicID(token: token, fileName: GIFRenderer.fileName),
+                           saveAs: GIFRenderer.fileName)
     }
 
     func pageURL(token: String) -> URL? { url(for: .raw, publicID: Self.pagePublicID(token: token)) }
@@ -177,6 +198,7 @@ struct CloudinaryService {
         switch (filename as NSString).pathExtension.lowercased() {
         case "jpg", "jpeg": return "image/jpeg"
         case "png":         return "image/png"
+        case "gif":         return "image/gif"
         case "html":        return "text/html"
         case "txt":         return "text/plain"
         default:            return "application/octet-stream"

@@ -279,6 +279,27 @@ private struct SessionDetail: View {
                     }
                 }
 
+                if GIFRenderer.enabled, let g = rec.gifFileName {
+                    let url = c.storage.directory(for: rec.id).appendingPathComponent(g)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ANIMATED GIF")
+                            .font(.system(size: 10, weight: .semibold)).tracking(1)
+                            .foregroundStyle(VHS.dim)
+                        if let img = NSImage(contentsOf: url) {
+                            // Animating here, unlike on the guest screen: the
+                            // console is a place the operator is looking, and
+                            // a still GIF tells them nothing about the loop.
+                            AnimatedImage(image: img)
+                                .aspectRatio(img.size.width / max(1, img.size.height),
+                                             contentMode: .fit)
+                                .frame(maxWidth: 260)
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.hairline))
+                                .onTapGesture { NSWorkspace.shared.open(url) }
+                        }
+                    }
+                }
+
                 if !rec.photos.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("ORIGINALS")

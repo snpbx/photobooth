@@ -72,8 +72,11 @@ enum PagesTemplate {
     figcaption { display:flex; justify-content:space-between; align-items:center;
                  padding:9px 12px; font-size:13px; color:var(--dim); }
     figcaption a { color:var(--ink); text-decoration:none; font-weight:600; }
-    .hero { margin:0 0 22px; }
+    .hero { margin:0 0 22px; display:grid; gap:14px; grid-template-columns:1fr; }
     .hero img { display:block; width:100%; height:auto; border-radius:14px; border:1px solid var(--line); }
+    /* Print and loop side by side once there is room; stacked on a phone, which
+       is where nearly every guest opens this. */
+    @media (min-width:640px) { .hero.pair { grid-template-columns:1fr 1fr; align-items:start; } }
     .note { color:var(--dim); font-size:13px; margin:26px 0 0; }
     footer { margin-top:34px; padding-top:18px; border-top:1px solid var(--line);
              color:var(--dim); font-size:13px; }
@@ -216,11 +219,13 @@ enum PagesTemplate {
                             session: SessionRecord,
                             photos: [PhotoRef],
                             print printRef: PhotoRef?,
+                            gif gifRef: PhotoRef? = nil,
                             albumHref: String,
                             brandLink: String? = nil,
                             brandLabel: String = "") -> String {
         var all = photos
         if let p = printRef { all.append(p) }
+        if let g = gifRef { all.append(g) }
         let jsList = "[" + all.map { "'\($0.src)'" }.joined(separator: ",") + "]"
         let zipName = "photos-\(session.publicToken).zip"
 
@@ -232,10 +237,18 @@ enum PagesTemplate {
         </header>
         """
 
-        if let p = printRef {
-            html += """
-            <div class="hero"><img src="\(esc(p.src))" alt="Your print"></div>
-            """
+        if printRef != nil || gifRef != nil {
+            let pair = printRef != nil && gifRef != nil
+            html += "<div class=\"hero\(pair ? " pair" : "")\">"
+            if let p = printRef {
+                html += "<img src=\"\(esc(p.src))\" alt=\"Your print\">"
+            }
+            if let g = gifRef {
+                // No <video>, no script: a GIF in an <img> plays by itself, which
+                // is the whole reason the booth makes one.
+                html += "<img class=\"loop\" src=\"\(esc(g.src))\" alt=\"Your GIF\">"
+            }
+            html += "</div>"
         }
 
         html += "<div class=\"row\">"
@@ -246,6 +259,9 @@ enum PagesTemplate {
         }
         if let p = printRef {
             html += "<a class=\"btn\" href=\"\(esc(p.save))\" download>Save the print</a>"
+        }
+        if let g = gifRef {
+            html += "<a class=\"btn\" href=\"\(esc(g.save))\" download>Save the GIF</a>"
         }
         html += "<a class=\"btn\" href=\"\(esc(albumHref))\">The whole album</a>"
         html += "</div>"
@@ -265,7 +281,11 @@ enum PagesTemplate {
             html += "</div>"
         }
 
-        html += "<p class=\"note\">On an iPhone, hold a photograph and choose “Add to Photos”, or use Save.</p>"
+        html += "<p class=\"note\">On an iPhone, hold a photograph and choose “Add to Photos”, or use Save."
+        if gifRef != nil {
+            html += " Hold the GIF the same way to send it on."
+        }
+        html += "</p>"
         html += zipScript
         return html + foot(brandLink: brandLink, brandLabel: brandLabel)
     }

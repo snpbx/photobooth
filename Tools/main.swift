@@ -137,6 +137,9 @@ MainActor.assumeIsolated {
     shots.append(Shot(name: "booth-idle-1600x900", size: CGSize(width: 1600, height: 900)) {
         AnyView(BoothRootView(c: $0))
     })
+    shots.append(Shot(name: "booth-idle-960x540", size: CGSize(width: 960, height: 540)) {
+        AnyView(BoothRootView(c: $0))
+    })
 
     // Walk a real session with the built-in camera so the countdown, capture,
     // preview and finish screens are captured from live state, not mock-ups.
@@ -1161,12 +1164,19 @@ MainActor.assumeIsolated {
     }
 
     for shot in shots {
+        // Borderless, because AppKit constrains a *titled* window to the screen
+        // it lands on: on a booth Mac driven at 960 x 540 points every shot came
+        // out 960 x 413 no matter which size was asked for, which quietly makes
+        // the whole harness lie. The host frame is also re-applied after the
+        // contentView assignment, which resizes it to the window.
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: shot.size),
-                              styleMask: [.titled, .resizable],
+                              styleMask: [.borderless],
                               backing: .buffered, defer: false)
         let host = NSHostingView(rootView: shot.make(controller))
-        host.frame = NSRect(origin: .zero, size: shot.size)
         window.contentView = host
+        window.setContentSize(shot.size)
+        host.autoresizingMask = []
+        host.frame = NSRect(origin: .zero, size: shot.size)
         window.orderBack(nil)
 
         // Let SwiftUI settle (async image loads, printer poll, layout passes).
