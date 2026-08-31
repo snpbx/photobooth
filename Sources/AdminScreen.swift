@@ -215,7 +215,7 @@ private struct ControlTab: View {
                 ResponsiveColumns(count: cols, spacing: 42) {
                     [
                         AnyView(EventCard(c: c)),
-                        AnyView(CameraCard(c: c)),
+                        AnyView(CameraCard(c: c, live: c.livePreview)),
                         AnyView(SessionCard(c: c)),
                         AnyView(BoothButtonCard(c: c, trigger: c.trigger)),
                         AnyView(GallerySiteCard(c: c, uploader: c.uploader)),
@@ -347,6 +347,9 @@ private struct MinimalControlTab: View {
 
 private struct CameraCard: View {
     @ObservedObject var c: BoothController
+    /// Observed here and nowhere else in the console, so the fifteen frames a
+    /// second land on this card alone.
+    @ObservedObject var live: LivePreviewSource
 
     var body: some View {
         SectionCard(title: "Camera",
@@ -382,15 +385,15 @@ private struct CameraCard: View {
                 if let shot = c.shotPreview, !c.state.isSessionActive {
                     ImageView(image: shot)
                 } else {
-                    LivePreview(frame: c.liveFrame,
+                    LivePreview(frame: live.frame,
                                 mirrored: c.settings.mirrorImages,
                                 placeholder: c.settings.liveViewEnabled
                                     ? "No live view — connect the camera"
                                     : "Live view is switched off")
                     // Same guide the guests get, drawn plainly: the console is
                     // for checking the crop, not for framing anyone.
-                    FramingGuide(imageAspect: (c.liveFrame?.size.width ?? 4)
-                                            / max(1, c.liveFrame?.size.height ?? 3),
+                    FramingGuide(imageAspect: (live.frame?.size.width ?? 4)
+                                            / max(1, live.frame?.size.height ?? 3),
                                  cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
                                                                       settings: c.settings),
                                  cropMode: c.settings.cropMode,

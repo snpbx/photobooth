@@ -12,7 +12,7 @@ struct BoothRootView: View {
     @State private var wrong = false
 
     var body: some View {
-        PhotoboothScreen(c: c)
+        PhotoboothScreen(c: c, live: c.livePreview)
             .overlay(alignment: .topTrailing) { exitHint }
             .sheet(isPresented: $askingPasscode) { passcodeSheet }
             .onReceive(NotificationCenter.default.publisher(for: .boothRequestedAdmin)) { _ in

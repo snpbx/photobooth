@@ -6,6 +6,7 @@ import AppKit
 /// the date stamp bottom-left. Nothing administrative is reachable from here.
 struct PhotoboothScreen: View {
     @ObservedObject var c: BoothController
+    @ObservedObject var live: LivePreviewSource
     @ObservedObject private var clock = OSDClock.shared
 
     var body: some View {
@@ -15,12 +16,12 @@ struct PhotoboothScreen: View {
                 VHS.black
 
                 // The picture sits behind the overlay, as it does in a viewfinder.
-                ViewfinderImage(c: c, m: m)
+                ViewfinderImage(c: c, live: live, m: m)
 
                 // Only while there is someone to frame: not over the shutter
                 // flash, the photograph just taken, or the finish screen.
-                if c.settings.framingGuide, showsFramingGuide, let live = c.liveFrame {
-                    FramingGuide(imageAspect: live.size.width / max(1, live.size.height),
+                if c.settings.framingGuide, showsFramingGuide, let frame = live.frame {
+                    FramingGuide(imageAspect: frame.size.width / max(1, frame.size.height),
                                  cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
                                                                       settings: c.settings),
                                  cropMode: c.settings.cropMode,
@@ -28,7 +29,7 @@ struct PhotoboothScreen: View {
                                  lineWidth: max(1, m.pt(0.25)))
                 }
 
-                OSDLayer(c: c, m: m, now: clock.now)
+                OSDLayer(c: c, live: live, m: m, now: clock.now)
 
                 CRTOverlay(scanlineSpacing: max(2, m.pt(0.30)))
             }
@@ -58,6 +59,7 @@ struct PhotoboothScreen: View {
 
 private struct ViewfinderImage: View {
     @ObservedObject var c: BoothController
+    @ObservedObject var live: LivePreviewSource
     let m: StageMetrics
 
     var body: some View {
@@ -67,7 +69,7 @@ private struct ViewfinderImage: View {
                 // Guests see themselves while they decide — the booth reads as a
                 // mirror rather than a black screen. Falls back to the empty
                 // field when the camera has nothing to give.
-                if c.settings.idleLiveView, let frame = c.liveFrame {
+                if c.settings.idleLiveView, let frame = live.frame {
                     Image(nsImage: frame)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -93,7 +95,7 @@ private struct ViewfinderImage: View {
                 // so the picture is drawn there rather than here.
                 VHS.field
             default:
-                if let frame = c.liveFrame {
+                if let frame = live.frame {
                     Image(nsImage: frame)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -112,6 +114,7 @@ private struct ViewfinderImage: View {
 
 private struct OSDLayer: View {
     @ObservedObject var c: BoothController
+    @ObservedObject var live: LivePreviewSource
     let m: StageMetrics
     let now: Date
 
@@ -221,7 +224,7 @@ private struct OSDLayer: View {
     private var centrepiece: some View {
         switch c.state {
         case .idle:
-            IdleCentre(c: c, m: m)
+            IdleCentre(c: c, live: live, m: m)
 
         case .starting:
             OSDBanner(m: m, lines: ["GET READY"], tint: VHS.phosphor)
@@ -276,12 +279,13 @@ private struct OSDLayer: View {
 private struct IdleCentre: View {
     @Environment(\.vhsLightRendering) private var light
     @ObservedObject var c: BoothController
+    @ObservedObject var live: LivePreviewSource
     let m: StageMetrics
     @State private var blink = true
 
     var body: some View {
         let ready = c.cameraState.isReady && c.activeEvent != nil
-        let overPicture = c.settings.idleLiveView && c.liveFrame != nil
+        let overPicture = c.settings.idleLiveView && live.frame != nil
 
         VStack(spacing: m.pt(3)) {
             VHSText(text: c.settings.eventTitle, size: m.pt(3.4),

@@ -3,6 +3,14 @@ import AppKit
 import SwiftUI
 import Combine
 
+/// The live camera picture, published on its own so that a preview frame does
+/// not invalidate every view that happens to observe `BoothController`.
+@MainActor
+final class LivePreviewSource: ObservableObject {
+    @Published private(set) var frame: NSImage?
+    func set(_ image: NSImage?) { frame = image }
+}
+
 /// Owns the session state machine and wires the services together.
 /// Every transition happens here so the UI only ever renders `state`.
 ///
@@ -18,7 +26,23 @@ final class BoothController: ObservableObject {
     @Published private(set) var boothWindowOpen = false
     @Published private(set) var adminWindowVisible = true
     @Published private(set) var cameraState: CameraState = .disconnected
-    @Published private(set) var liveFrame: NSImage?
+    /// The camera's live frames, deliberately kept off this object.
+    ///
+    /// `BoothController` is observed by the whole Admin console, and `@Published`
+    /// invalidates every observer for *any* property that changes. With the
+    /// preview living here, a frame arriving fifteen times a second re-evaluated
+    /// the entire console — including the minimal one, which shows no camera at
+    /// all. On a screen carried over USB that meant the whole display being
+    /// re-encoded and shipped fifteen times a second while nothing on it had
+    /// visibly changed, which is what made taps feel late.
+    ///
+    /// Held separately, only the views that actually draw the picture observe it.
+    let livePreview = LivePreviewSource()
+
+    /// Reading convenience for the controller's own logic and the offscreen
+    /// harness. Not published: views must observe `livePreview` instead, which
+    /// is the entire point of the split.
+    var liveFrame: NSImage? { livePreview.frame }
     @Published private(set) var shotPreview: NSImage?
     @Published private(set) var currentSession: SessionRecord?
     @Published private(set) var sessionPrintImage: NSImage?
@@ -303,7 +327,7 @@ final class BoothController: ObservableObject {
         camera?.onFrame = nil
         camera?.stopLiveView()
         camera?.disconnect()
-        liveFrame = nil
+        livePreview.set(nil)
         cameraState = .connecting
 
         let made: CameraBackendService
@@ -331,7 +355,7 @@ final class BoothController: ObservableObject {
         }
         made.onFrame = { [weak self] img in
             guard let self, self.wantsLiveView else { return }
-            self.liveFrame = img
+            self.livePreview.set(img)
             self.recordMotionFrame(img)
         }
         camera = made
@@ -351,7 +375,7 @@ final class BoothController: ObservableObject {
     func disconnectCamera() {
         camera?.stopLiveView()
         camera?.disconnect()
-        liveFrame = nil
+        livePreview.set(nil)
     }
 
     private func startDetectPolling() {
@@ -418,7 +442,7 @@ final class BoothController: ObservableObject {
             camera.stopLiveView()
             // Without this the last frame stays on screen: a guest frozen on the
             // idle display long after the camera stopped.
-            liveFrame = nil
+            livePreview.set(nil)
         }
     }
 
