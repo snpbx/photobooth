@@ -149,7 +149,17 @@ final class BoothController: ObservableObject {
         s.$settings
             .dropFirst()
             .removeDuplicates()
-            .sink { [weak self] new in self?.applySettings(new) }
+            .sink { [weak self] new in
+                // Republish. Every card in the console observes this controller
+                // and reads settings through it, but the settings live on their
+                // own object — so without this a tapped layout tile or copies
+                // number changed the stored value and no highlight moved.
+                //
+                // `@Published` fires on willSet, which is exactly when SwiftUI
+                // wants to be told, so the re-read afterwards sees the new value.
+                self?.objectWillChange.send()
+                self?.applySettings(new)
+            }
             .store(in: &cancels)
 
         wireUploader()

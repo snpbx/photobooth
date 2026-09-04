@@ -323,15 +323,18 @@ private struct ControlTab: View {
             ScrollView {
                 ResponsiveColumns(count: cols, spacing: 16) {
                     [
+                        // Layout and copies first: they are what changes between
+                        // groups. Everything below is set once when the booth
+                        // goes up and left alone.
+                        AnyView(LayoutCard(c: c)),
+                        AnyView(SessionCard(c: c)),
                         AnyView(EventCard(c: c)),
                         AnyView(CameraCard(c: c, live: c.livePreview)),
-                        AnyView(SessionCard(c: c)),
+                        AnyView(PrinterCard(c: c)),
                         AnyView(BoothButtonCard(c: c, trigger: c.trigger)),
+                        AnyView(TimingCard(c: c)),
                         AnyView(GallerySiteCard(c: c, uploader: c.uploader)),
                         AnyView(AlbumCard(c: c)),
-                        AnyView(TimingCard(c: c)),
-                        AnyView(LayoutCard(c: c)),
-                        AnyView(PrinterCard(c: c)),
                         AnyView(BoothWindowCard(c: c)),
                         AnyView(StorageCard(c: c))
                     ]
@@ -1102,8 +1105,16 @@ private struct CopiesPicker: View {
     @Environment(\.touchControls) private var touch
 
     var body: some View {
-        VStack(alignment: .leading, spacing: touch ? 9 : 5) {
-            Text("Copies").font(.system(size: 12, weight: .medium))
+        VStack(alignment: .leading, spacing: touch ? 10 : 5) {
+            HStack(spacing: 8) {
+                Text("Copies").font(.system(size: touch ? 14 : 12, weight: .medium))
+                Spacer(minLength: 8)
+                // The chosen number restated, so the answer is legible without
+                // hunting for which of ten buttons is filled.
+                Text("\(c.settings.copies) per session")
+                    .font(.system(size: touch ? 12 : 11))
+                    .foregroundStyle(Palette.textDim)
+            }
 
             FlowRow(spacing: touch ? 8 : 6, perRow: 5) {
                 (1...10).map { n in
@@ -1116,8 +1127,6 @@ private struct CopiesPicker: View {
                 }
             }
 
-            Text("Prints sent to the SELPHY per session.")
-                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
         }
     }
 }
@@ -1164,11 +1173,19 @@ private struct LayoutChoice: View {
                     HStack(alignment: .center, spacing: touch ? 14 : 10) {
                         schematic.frame(width: touch ? 72 : 52)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(layout.title).font(.system(size: 12, weight: .semibold))
-                            Text(layout.subtitle).font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                            Text(layout.title)
+                                .font(.system(size: touch ? 14 : 12, weight: .semibold))
+                            Text("\(layout.photoCount) photos · \(layout.subtitle)")
+                                .font(.system(size: touch ? 12 : 11))
+                                .foregroundStyle(Palette.textDim)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
+                        // A tick, not just a heavier border: at a glance across a
+                        // room the border weight alone is not a difference.
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: touch ? 22 : 17))
+                            .foregroundStyle(selected ? Palette.ink : Palette.hairline)
                     }
                 } else {
                     VStack(spacing: 7) {
