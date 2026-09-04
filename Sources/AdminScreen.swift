@@ -27,19 +27,28 @@ struct AdminScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AdminToolbar(c: c, tab: tab)
-            Divider()
+        GeometryReader { geo in
+            // Below this the rail drops to icons: a 220pt sidebar out of an
+            // 820pt window is a quarter of the console spent on navigation.
+            let railExpanded = geo.size.width >= 900
+            HStack(spacing: 0) {
+                AdminSidebar(c: c, tab: tab, expanded: railExpanded)
+                Rectangle().fill(Palette.hairline).frame(width: 1)
 
-            Group {
-                switch tab.wrappedValue {
-                case .control:  ControlTab(c: c)
-                case .gallery:  GalleryTab(c: c)
-                case .settings: SettingsTab(c: c)
-                case .log:      LogTab()
+                VStack(spacing: 0) {
+                    ContentHeader(c: c, tab: tab.wrappedValue)
+                    Rectangle().fill(Palette.hairline).frame(height: 1)
+                    Group {
+                        switch tab.wrappedValue {
+                        case .control:  ControlTab(c: c)
+                        case .gallery:  GalleryTab(c: c)
+                        case .settings: SettingsTab(c: c)
+                        case .log:      LogTab()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(VHS.phosphor)
         }
         .background(VHS.black)
@@ -63,100 +72,172 @@ struct AdminScreen: View {
     }
 }
 
-// MARK: - Toolbar
+// MARK: - Sidebar
 
-private struct AdminToolbar: View {
+/// Navigation down the left rather than tabs across the top.
+///
+/// On a 1180 x 820 iPad the console is wider than it is tall, so a vertical rail
+/// spends the axis there is most of and gives each destination a row a thumb can
+/// hit — a segmented control across the top gave every tab a 22pt-tall sliver.
+/// It also puts the things an operator glances at, rather than presses — camera,
+/// printer, disk — in one column instead of strung along a toolbar.
+private struct AdminSidebar: View {
     @ObservedObject var c: BoothController
     @Binding var tab: AdminTab
+    let expanded: Bool
+    @Environment(\.touchControls) private var touch
 
     var body: some View {
-        // ViewThatFits keeps the toolbar usable down to a small MacBook window.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) { full }
-            HStack(spacing: 10) { medium }
-            HStack(spacing: 8)  { compact }
+        VStack(alignment: .leading, spacing: 0) {
+            wordmark
+            nav
+            Spacer(minLength: 12)
+            if expanded { status }
+            boothButton
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(minHeight: 52)
-        .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
+        .padding(.horizontal, expanded ? 12 : 8)
+        .padding(.vertical, 14)
+        .frame(width: expanded ? 218 : 68, alignment: .leading)
+        .background(Palette.panel)
     }
 
-    @ViewBuilder private var full: some View {
-        title
-        tabs
-        Spacer(minLength: 12)
-        StatusPill(icon: "camera", label: c.cameraState.label, tint: c.cameraState.tint,
-                   pulsing: !c.cameraState.isReady)
-        StatusPill(icon: "printer", label: c.printer.state.label, tint: c.printer.state.tint)
-        StatusPill(icon: "internaldrive", label: "\(c.storage.freeSpaceMB.asDiskSize) free",
-                   tint: c.storage.freeSpaceMB < 500 ? VHS.amber : .secondary)
-        boothButton
-    }
-
-    @ViewBuilder private var medium: some View {
-        tabs
-        Spacer(minLength: 8)
-        StatusPill(icon: "camera", label: shortCamera, tint: c.cameraState.tint)
-        StatusPill(icon: "printer", label: shortPrinter, tint: c.printer.state.tint)
-        boothButton
-    }
-
-    @ViewBuilder private var compact: some View {
-        tabs
-        Spacer(minLength: 4)
-        StatusDot(tint: c.cameraState.tint)
-        StatusDot(tint: c.printer.state.tint)
-        boothButton
-    }
-
-    private var shortCamera: String { c.cameraState.isReady ? "Camera" : "No camera" }
-    private var shortPrinter: String { c.printer.state.isReady ? "Printer" : "No printer" }
-
-    private var title: some View {
-        HStack(spacing: 7) {
-            CaptureLamp(size: 7, active: c.state.isSessionActive, glow: false)
-            OSDLabel(text: "PHOTOBOOTH", size: 11, weight: .bold, tracking: 0.22)
-        }
-        .fixedSize()
-    }
-
-    private var tabs: some View {
-        Picker("", selection: $tab) {
-            ForEach(AdminTab.allCases) { t in
-                Label(t.rawValue, systemImage: t.glyph).tag(t)
+    private var wordmark: some View {
+        HStack(spacing: 8) {
+            CaptureLamp(size: 8, active: c.state.isSessionActive, glow: false)
+            if expanded {
+                OSDLabel(text: "PHOTOBOOTH", size: 11, weight: .bold, tracking: 0.22)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(minWidth: 240, maxWidth: 360)
+        .padding(.horizontal, 6)
+        .padding(.bottom, 18)
+    }
+
+    private var nav: some View {
+        VStack(spacing: 4) {
+            ForEach(AdminTab.allCases) { t in
+                NavRow(tab: t, selected: tab == t, expanded: expanded,
+                       accent: Color(hex: c.settings.accentHex),
+                       height: touch ? 52 : 40) { tab = t }
+            }
+        }
+    }
+
+    /// Small muted caption over the value it describes — the arrangement that
+    /// makes a status column readable at a glance instead of parsed.
+    private var status: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle().fill(Palette.hairline).frame(height: 1)
+            StatusReadout(caption: "Camera", value: c.cameraState.label, tint: c.cameraState.tint)
+            StatusReadout(caption: "Printer", value: c.printer.state.label, tint: c.printer.state.tint)
+            StatusReadout(caption: "Disk", value: "\(c.storage.freeSpaceMB.asDiskSize) free",
+                          tint: c.storage.freeSpaceMB < 500 ? VHS.amber : VHS.dim)
+        }
+        .padding(.horizontal, 6)
+        .padding(.bottom, 16)
     }
 
     private var boothButton: some View {
-        HStack(spacing: 6) {
-            Button {
-                c.boothWindowOpen ? c.hideBooth() : c.showBooth()
-            } label: {
+        Button {
+            c.boothWindowOpen ? c.hideBooth() : c.showBooth()
+        } label: {
+            if expanded {
                 Label(c.boothWindowOpen ? "Close Booth" : "Open Booth",
                       systemImage: c.boothWindowOpen ? "xmark.rectangle" : "rectangle.on.rectangle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .fixedSize()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(c.boothWindowOpen ? .secondary : Color(hex: c.settings.accentHex))
-            .help("Open or close the separate guest window (⌘B).")
-
-            if c.boothWindowOpen {
-                Button {
-                    c.showBooth()
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Bring the booth window forward (⌘2).")
+            } else {
+                Image(systemName: c.boothWindowOpen ? "xmark.rectangle" : "rectangle.on.rectangle")
             }
         }
+        .buttonStyle(PrimaryButtonStyle(tint: Color(hex: c.settings.accentHex), compact: !expanded))
+        .help(c.boothWindowOpen ? "Close the booth window" : "Open the booth window")
+    }
+}
+
+private struct NavRow: View {
+    let tab: AdminTab
+    let selected: Bool
+    let expanded: Bool
+    let accent: Color
+    let height: CGFloat
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                // A bar rather than a filled pill: one rectangle, and it reads at
+                // a glance without tinting the whole row.
+                Rectangle()
+                    .fill(selected ? accent : .clear)
+                    .frame(width: 3, height: height * 0.5)
+                Image(systemName: tab.glyph)
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 20)
+                if expanded {
+                    OSDLabel(text: tab.rawValue, size: 11,
+                             weight: selected ? .bold : .semibold,
+                             color: selected ? VHS.phosphor : VHS.dim,
+                             tracking: 0.16)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.trailing, expanded ? 8 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: height)
+            .background(selected ? Color.white.opacity(0.05) : .clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .foregroundStyle(selected ? VHS.phosphor : VHS.dim)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(tab.rawValue)
+    }
+}
+
+private struct StatusReadout: View {
+    let caption: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            OSDLabel(text: caption, size: 9, weight: .semibold, color: VHS.dim, tracking: 0.22)
+            HStack(spacing: 6) {
+                StatusDot(tint: tint)
+                Text(value)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(tint == .secondary ? VHS.dim : tint)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// Says where you are and who you are shooting, which the tab rail alone cannot.
+private struct ContentHeader: View {
+    @ObservedObject var c: BoothController
+    let tab: AdminTab
+    @Environment(\.touchControls) private var touch
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(tab.rawValue)
+                .font(.system(size: 15, weight: .semibold))
+            Spacer(minLength: 12)
+            if let e = c.activeEvent {
+                VStack(alignment: .trailing, spacing: 2) {
+                    OSDLabel(text: "Event", size: 9, weight: .semibold, color: VHS.dim, tracking: 0.22)
+                    Text(e.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                }
+                Rectangle().fill(Palette.hairline).frame(width: 1, height: 22)
+            }
+            OSDLabel(text: c.state.name, size: 10, weight: .bold,
+                     color: c.state.isSessionActive ? VHS.amber : VHS.dim, tracking: 0.18)
+                .padding(.leading, 2)
+        }
+        .padding(.horizontal, 20)
+        .frame(height: touch ? 60 : 50)
     }
 }
 
@@ -188,7 +269,7 @@ private struct ControlTab: View {
         GeometryReader { geo in
             let cols = columnCount(for: geo.size.width)
             ScrollView {
-                ResponsiveColumns(count: cols, spacing: 42) {
+                ResponsiveColumns(count: cols, spacing: 16) {
                     [
                         AnyView(EventCard(c: c)),
                         AnyView(CameraCard(c: c, live: c.livePreview)),
@@ -206,15 +287,17 @@ private struct ControlTab: View {
                 .frame(maxWidth: 1760)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 20)
-                .padding(.vertical, 18)
+                .padding(.vertical, 20)
             }
         }
     }
 
     private func columnCount(for width: CGFloat) -> Int {
+        // Measured against the content area, which is now narrower than the
+        // window by the width of the rail.
         switch width {
-        case ..<820:   return 1
-        case ..<1280:  return 2
+        case ..<720:   return 1
+        case ..<1180:  return 2
         default:       return 3
         }
     }

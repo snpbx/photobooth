@@ -7,6 +7,11 @@ enum Palette {
     static let boothBG      = VHS.black
     static let boothBGLift  = VHS.field
     static let panel        = Color(red: 0.055, green: 0.058, blue: 0.066)
+    /// Card surface: a shade off the page, no more. Lifting a card with a shadow
+    /// would mean an offscreen blur pass per card on every redraw, which is the
+    /// cost the console was stripped of in the first place — and which a screen
+    /// carried over USB pays for twice.
+    static let card         = Color(red: 0.043, green: 0.046, blue: 0.053)
     static let panelHead    = Color(red: 0.086, green: 0.090, blue: 0.100)
     static let hairline     = VHS.phosphor.opacity(0.16)
     static let text         = VHS.phosphor
@@ -170,9 +175,13 @@ struct SectionCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, touch ? 18 : 13)
         }
-        // Minimal: a heading, a rule, and the controls. No panel fill, no border,
-        // no brackets — each of those was a extra layer to composite per card.
-        .padding(.horizontal, 2)
+        // A surface, so each card reads as one thing rather than a run of rows
+        // separated by rules. Deliberately a flat fill and a one-pixel border:
+        // no shadow, no blur, nothing that costs an offscreen pass per card.
+        .padding(touch ? 18 : 14)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Palette.hairline.opacity(0.7), lineWidth: 1))
     }
 }
 

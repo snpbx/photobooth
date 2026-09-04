@@ -92,15 +92,30 @@ little bloom (`VHSText`). Nothing to license, nothing to bundle.
 
 The Admin console speaks the same language — mono uppercase headings and softkeys,
 square status lamps, amber and phosphor on black — but it is deliberately the
-minimal version: a heading, a rule, and the controls. No scanline overlay, no
-panel fills, no corner brackets, no chromatic fringe, no glows. Body copy stays at
-normal weight and native controls are left alone, because a panel used at 2am has
-to be readable first and atmospheric second.
+minimal version. No scanline overlay, no corner brackets, no chromatic fringe, no
+glows. Body copy stays at normal weight and native controls are left alone,
+because a panel used at 2am has to be readable first and atmospheric second.
 
 That is a performance decision as much as a visual one. `VHSText` has a flat path
 (`fringe: 0`) that renders one `Text` instead of three plus two blurs and a
 shadow, and the console uses `OSDLabel`, which is just monospaced capitals with
 tracking.
+
+**Navigation runs down the left**, not across the top. On a 1180 × 820 iPad the
+console is wider than it is tall, so a vertical rail spends the axis there is
+most of and gives each destination a row a thumb can hit — a segmented control
+across the top gave every tab a 22pt sliver. The rail also collects what an
+operator *glances* at rather than presses — camera, printer, disk — into one
+column of caption-over-value readouts, with the booth button at the foot. Below
+900pt it drops to icons, since 218pt of navigation out of an 820pt window is a
+quarter of the console spent on getting around it.
+
+Cards sit on a surface a shade off the page, so each reads as one thing rather
+than a run of rows separated by rules. That surface is a flat fill and a
+one-pixel border and nothing else: lifting a card with a shadow would mean an
+offscreen blur pass per card on every redraw, which is the cost the console was
+stripped of in the first place — and which a screen carried over USB pays for
+twice.
 
 ## Touch
 
