@@ -21,9 +21,25 @@ enum AdminTab: String, CaseIterable, Identifiable {
 struct AdminScreen: View {
     @ObservedObject var c: BoothController
 
+    /// The console *renders* settings, so it has to observe the object that owns
+    /// them. `BoothController` republishes only the handful it acts on, and the
+    /// selected tab is not one of them — so without this a tab click changed the
+    /// stored value and nothing redrew.
+    ///
+    /// It went unnoticed while navigation was a segmented `Picker`: AppKit moves
+    /// that control's highlight itself, so it looked like it had worked and the
+    /// content caught up on the next unrelated redraw. Anything drawing its own
+    /// selected state, as the rail does, shows the gap immediately.
+    @ObservedObject private var store: SettingsService
+
+    init(c: BoothController) {
+        _c = ObservedObject(wrappedValue: c)
+        _store = ObservedObject(wrappedValue: c.settingsService)
+    }
+
     private var tab: Binding<AdminTab> {
-        Binding(get: { AdminTab(rawValue: c.settings.lastAdminTab) ?? .control },
-                set: { c.settingsService.settings.lastAdminTab = $0.rawValue })
+        Binding(get: { AdminTab(rawValue: store.settings.lastAdminTab) ?? .control },
+                set: { store.settings.lastAdminTab = $0.rawValue })
     }
 
     var body: some View {
