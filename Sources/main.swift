@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+/// A hosting view that lets the very first click through to what is under it.
+///
+/// macOS spends the first click on an inactive window activating that window and
+/// does not deliver it to the control beneath the pointer. At a desk this is
+/// barely noticeable. On a booth console it means every button has to be pressed
+/// twice whenever focus has wandered — to the guest window, to whatever is
+/// driving a second display, to anything at all — which reads as the console
+/// ignoring presses at random, with a mouse exactly as much as with a finger.
+///
+/// The booth is a two-window app on two screens, so focus wanders constantly.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static let shared = AppDelegate()
@@ -48,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.center()
         w.delegate = self
         w.collectionBehavior.insert(.fullScreenPrimary)
-        w.contentView = NSHostingView(rootView: AdminRootView(c: controller))
+        w.contentView = FirstMouseHostingView(rootView: AdminRootView(c: controller))
         w.isReleasedWhenClosed = false
         w.makeKeyAndOrderFront(nil)
         adminWindow = w
@@ -104,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.titleVisibility = .hidden
         w.standardWindowButton(.miniaturizeButton)?.isHidden = true
         w.standardWindowButton(.zoomButton)?.isHidden = true
-        w.contentView = NSHostingView(rootView: BoothRootView(c: controller))
+        w.contentView = FirstMouseHostingView(rootView: BoothRootView(c: controller))
         boothWindow = w
 
         moveBooth(w, to: screen, fullScreen: fullScreen)
