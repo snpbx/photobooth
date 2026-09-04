@@ -130,10 +130,16 @@ Session column at 1180 × 820:
 
 | | off | on |
 | --- | --- | --- |
-| Start Session | 31 pt | 54 pt |
-| Retake number | 29 | 51 |
-| Restart / Print Session | 28 | 48 |
-| Copies | field + 11pt arrows | 51 × 51 buttons |
+| Start Session | 31 pt | 60 pt |
+| Restart / Print Session | 28 | 54 |
+| Retake number | 29 | 60 × 56 |
+| Copies | field + 11pt arrows | 56 × 56 buttons |
+| Rail row | — | 58 |
+
+The one thing that will not move is AppKit's own: a pop-up button or text field
+tops out near 36pt even at `.extraLarge`, because those are drawn by the system
+rather than by this app. Replacing them with custom controls is the only way past
+it, and has not been done.
 
 Copies is ten buttons rather than a field and a stepper: the value only ever runs
 1–10, so there is nothing worth typing, and on a touch screen a text field means

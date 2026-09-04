@@ -73,7 +73,7 @@ struct AdminScreen: View {
         // `controlSize` is what moves the native controls — text fields, pickers,
         // the segmented tab bar — which this app does not draw itself and so
         // cannot pad. It costs nothing when touch is off.
-        .controlSize(c.settings.touchControls ? .large : .regular)
+        .controlSize(c.settings.touchControls ? .extraLarge : .regular)
         .modifier(TouchToggleStyling(enabled: c.settings.touchControls))
         .tint(VHS.amber)
         .overlay(alignment: .bottom) {
@@ -133,7 +133,7 @@ private struct AdminSidebar: View {
             ForEach(AdminTab.allCases) { t in
                 NavRow(tab: t, selected: tab == t, expanded: expanded,
                        accent: Color(hex: c.settings.accentHex),
-                       height: touch ? 52 : 40) { tab = t }
+                       height: touch ? 58 : 40) { tab = t }
             }
         }
     }
@@ -659,8 +659,8 @@ private struct RetakeNumber: View {
     var body: some View {
         Button(action: action) {
             Text("\(number)")
-                .font(VHS.mono(touch ? 16 : 12, .bold))
-                .frame(width: touch ? 54 : 30, height: touch ? 50 : 28)
+                .font(VHS.mono(touch ? 17 : 12, .bold))
+                .frame(width: touch ? 60 : 30, height: touch ? 56 : 28)
                 .background(background)
                 .foregroundStyle(foreground)
                 .overlay(Rectangle().stroke(border, lineWidth: 1))
@@ -1011,7 +1011,7 @@ private struct StepPad: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .bold))
-                .frame(width: 44, height: 44)
+                .frame(width: 52, height: 52)
                 .background(Color.white.opacity(0.06))
                 .foregroundStyle(isEnabled ? VHS.phosphor : VHS.dim.opacity(0.5))
                 .contentShape(Rectangle())
@@ -1073,7 +1073,7 @@ private struct CopiesPicker: View {
                     AnyView(CopiesNumber(
                         number: n,
                         selected: c.settings.copies == n,
-                        side: touch ? 50 : 32,
+                        side: touch ? 56 : 32,
                         accent: Color(hex: c.settings.accentHex),
                         action: { c.settingsService.settings.copies = n }))
                 }
@@ -1124,7 +1124,7 @@ private struct LayoutChoice: View {
             Group {
                 if showsSubtitle {
                     HStack(alignment: .center, spacing: touch ? 14 : 10) {
-                        schematic.frame(width: touch ? 62 : 52)
+                        schematic.frame(width: touch ? 72 : 52)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(layout.title).font(.system(size: 12, weight: .semibold))
                             Text(layout.subtitle).font(.system(size: 11)).foregroundStyle(VHS.dim)
@@ -1142,7 +1142,7 @@ private struct LayoutChoice: View {
                     }
                 }
             }
-            .padding(touch ? 14 : 9)
+            .padding(touch ? 18 : 9)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .background(selected ? accent.opacity(0.14) : Color.white.opacity(0.04),
