@@ -109,6 +109,7 @@ private struct AdminSidebar: View {
             nav
             Spacer(minLength: 12)
             if expanded { status }
+            touchToggle
             boothButton
         }
         .padding(.horizontal, expanded ? 12 : 8)
@@ -150,6 +151,41 @@ private struct AdminSidebar: View {
         }
         .padding(.horizontal, 6)
         .padding(.bottom, 16)
+    }
+
+    /// Touch sizing, one tap away.
+    ///
+    /// This lived only in Settings, which is a poor place for it: it is the
+    /// difference between a console you can use with a finger and one you
+    /// cannot, and an operator setting a booth up on a touch panel has no reason
+    /// to go looking for it. Off by default still — an iPad used as a monitor
+    /// sends taps to macOS as ordinary clicks, so the app genuinely cannot tell.
+    private var touchToggle: some View {
+        let on = c.settings.touchControls
+        return Button {
+            c.settingsService.settings.touchControls.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: on ? "hand.tap.fill" : "hand.tap")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 20)
+                if expanded {
+                    OSDLabel(text: on ? "Touch on" : "Touch off", size: 10,
+                             weight: .semibold,
+                             color: on ? Palette.paper : Palette.textDim, tracking: 0.16)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, expanded ? 10 : 0)
+            .frame(maxWidth: .infinity, alignment: expanded ? .leading : .center)
+            .frame(height: touch ? 48 : 36)
+            .background(on ? Palette.inkSoft : Palette.canvas, in: Capsule())
+            .foregroundStyle(on ? Palette.paper : Palette.ink)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Controls are sized for a fingertip" : "Size the controls for a fingertip")
+        .padding(.bottom, 8)
     }
 
     private var boothButton: some View {
