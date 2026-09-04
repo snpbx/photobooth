@@ -246,7 +246,8 @@ private struct BrandingCard: View {
                     .padding(6)
                     .background(Color(hex: c.settings.backgroundHex))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.hairline))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.hairline)
+                        .allowsHitTesting(false))
             }
 
             HStack(spacing: 8) {
@@ -366,7 +367,8 @@ private struct PrintQualityCard: View {
                     Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
                         .frame(width: 92)
                         .clipShape(RoundedRectangle(cornerRadius: 5))
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Palette.hairline))
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Palette.hairline)
+                            .allowsHitTesting(false))
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(c.settings.layout.title).font(.system(size: 12, weight: .semibold))

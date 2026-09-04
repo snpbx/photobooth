@@ -172,7 +172,8 @@ struct EventForm: View {
                 TextEditor(text: $notes)
                     .font(.system(size: 12))
                     .frame(height: 56)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.hairline))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.hairline)
+                        .allowsHitTesting(false))
             }
 
             if initial == nil, !name.trimmingCharacters(in: .whitespaces).isEmpty {

@@ -273,7 +273,8 @@ private struct SessionDetail: View {
                                 .resizable().aspectRatio(contentMode: .fit)
                                 .frame(maxWidth: .infinity)
                                 .clipShape(RoundedRectangle(cornerRadius: 7))
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.hairline))
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.hairline)
+                                    .allowsHitTesting(false))
                                 .onTapGesture { NSWorkspace.shared.open(url) }
                         }
                     }
@@ -294,7 +295,8 @@ private struct SessionDetail: View {
                                              contentMode: .fit)
                                 .frame(maxWidth: 260)
                                 .clipShape(RoundedRectangle(cornerRadius: 7))
-                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.hairline))
+                                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.hairline)
+                                    .allowsHitTesting(false))
                                 .onTapGesture { NSWorkspace.shared.open(url) }
                         }
                     }

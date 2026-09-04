@@ -411,7 +411,8 @@ private struct CameraCard: View {
             // a single column on a narrow window.
             .frame(maxWidth: .infinity, maxHeight: 300)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Palette.hairline))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Palette.hairline)
+                .allowsHitTesting(false))
 
             if c.detectedCameras.isEmpty {
                 Text(c.settings.cameraBackend == .dslr
@@ -663,7 +664,7 @@ private struct RetakeNumber: View {
                 .frame(width: touch ? 60 : 30, height: touch ? 56 : 28)
                 .background(background)
                 .foregroundStyle(foreground)
-                .overlay(Rectangle().stroke(border, lineWidth: 1))
+                .overlay(Rectangle().stroke(border, lineWidth: 1).allowsHitTesting(false))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1101,7 +1102,8 @@ private struct CopiesNumber: View {
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .foregroundStyle(selected ? VHS.black : VHS.phosphor)
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(selected ? accent : Palette.hairline, lineWidth: 1))
+                    .stroke(selected ? accent : Palette.hairline, lineWidth: 1)
+                    .allowsHitTesting(false))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1144,11 +1146,14 @@ private struct LayoutChoice: View {
             }
             .padding(touch ? 18 : 9)
             .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
             .background(selected ? accent.opacity(0.14) : Color.white.opacity(0.04),
                         in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(selected ? accent : Palette.hairline, lineWidth: selected ? 2 : 1))
+                .stroke(selected ? accent : Palette.hairline, lineWidth: selected ? 2 : 1)
+                .allowsHitTesting(false))
+            // Last, so the tappable area is the whole tile including its
+            // padding and border rather than just the text and thumbnail.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1162,7 +1167,8 @@ private struct LayoutChoice: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.hairline))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.hairline)
+            .allowsHitTesting(false))
     }
 }
 

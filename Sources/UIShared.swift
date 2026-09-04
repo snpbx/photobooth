@@ -180,8 +180,12 @@ struct SectionCard<Content: View>: View {
         // no shadow, no blur, nothing that costs an offscreen pass per card.
         .padding(touch ? 18 : 14)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // Decoration only. An overlay is drawn above the card's contents and
+        // takes part in hit testing unless told not to, which puts a border
+        // across the top of every button inside it.
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(Palette.hairline.opacity(0.7), lineWidth: 1))
+            .stroke(Palette.hairline.opacity(0.7), lineWidth: 1)
+            .allowsHitTesting(false))
     }
 }
 
@@ -414,7 +418,8 @@ struct BannerView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(message.tint)
-        .overlay(Rectangle().stroke(VHS.black.opacity(0.4), lineWidth: 1))
+        .overlay(Rectangle().stroke(VHS.black.opacity(0.4), lineWidth: 1)
+            .allowsHitTesting(false))
     }
 
     private var icon: String {
