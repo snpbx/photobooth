@@ -65,17 +65,17 @@ struct AdminScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .foregroundStyle(VHS.phosphor)
+            .foregroundStyle(Palette.text)
         }
-        .background(VHS.black)
-        .environment(\.colorScheme, .dark)
+        .background(Palette.canvas)
+        .environment(\.colorScheme, .light)
         .environment(\.touchControls, c.settings.touchControls)
         // `controlSize` is what moves the native controls — text fields, pickers,
         // the segmented tab bar — which this app does not draw itself and so
         // cannot pad. It costs nothing when touch is off.
         .controlSize(c.settings.touchControls ? .extraLarge : .regular)
         .modifier(TouchToggleStyling(enabled: c.settings.touchControls))
-        .tint(VHS.amber)
+        .tint(Palette.ink)
         .overlay(alignment: .bottom) {
             if let b = c.banner {
                 BannerView(message: b)
@@ -114,14 +114,14 @@ private struct AdminSidebar: View {
         .padding(.horizontal, expanded ? 12 : 8)
         .padding(.vertical, 14)
         .frame(width: expanded ? 218 : 68, alignment: .leading)
-        .background(Palette.panel)
+        .background(Palette.surfaceAlt)
     }
 
     private var wordmark: some View {
         HStack(spacing: 8) {
             CaptureLamp(size: 8, active: c.state.isSessionActive, glow: false)
             if expanded {
-                OSDLabel(text: "PHOTOBOOTH", size: 11, weight: .bold, tracking: 0.22)
+                OSDLabel(text: "PHOTOBOOTH", size: 11, weight: .bold, color: Palette.ink, tracking: 0.22)
             }
         }
         .padding(.horizontal, 6)
@@ -132,7 +132,7 @@ private struct AdminSidebar: View {
         VStack(spacing: 4) {
             ForEach(AdminTab.allCases) { t in
                 NavRow(tab: t, selected: tab == t, expanded: expanded,
-                       accent: Color(hex: c.settings.accentHex),
+                       accent: Palette.ink,
                        height: touch ? 58 : 40) { tab = t }
             }
         }
@@ -146,7 +146,7 @@ private struct AdminSidebar: View {
             StatusReadout(caption: "Camera", value: c.cameraState.label, tint: c.cameraState.tint)
             StatusReadout(caption: "Printer", value: c.printer.state.label, tint: c.printer.state.tint)
             StatusReadout(caption: "Disk", value: "\(c.storage.freeSpaceMB.asDiskSize) free",
-                          tint: c.storage.freeSpaceMB < 500 ? VHS.amber : VHS.dim)
+                          tint: c.storage.freeSpaceMB < 500 ? Palette.statusWarn : Palette.textDim)
         }
         .padding(.horizontal, 6)
         .padding(.bottom, 16)
@@ -163,7 +163,7 @@ private struct AdminSidebar: View {
                 Image(systemName: c.boothWindowOpen ? "xmark.rectangle" : "rectangle.on.rectangle")
             }
         }
-        .buttonStyle(PrimaryButtonStyle(tint: Color(hex: c.settings.accentHex), compact: !expanded))
+        .buttonStyle(PrimaryButtonStyle(compact: !expanded))
         .help(c.boothWindowOpen ? "Close the booth window" : "Open the booth window")
     }
 }
@@ -190,7 +190,7 @@ private struct NavRow: View {
                 if expanded {
                     OSDLabel(text: tab.rawValue, size: 11,
                              weight: selected ? .bold : .semibold,
-                             color: selected ? VHS.phosphor : VHS.dim,
+                             color: selected ? Palette.text : Palette.textDim,
                              tracking: 0.16)
                     Spacer(minLength: 0)
                 }
@@ -200,7 +200,7 @@ private struct NavRow: View {
             .frame(height: height)
             .background(selected ? Color.white.opacity(0.05) : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .foregroundStyle(selected ? VHS.phosphor : VHS.dim)
+            .foregroundStyle(selected ? Palette.text : Palette.textDim)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -215,12 +215,12 @@ private struct StatusReadout: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            OSDLabel(text: caption, size: 9, weight: .semibold, color: VHS.dim, tracking: 0.22)
+            OSDLabel(text: caption, size: 9, weight: .semibold, color: Palette.textDim, tracking: 0.22)
             HStack(spacing: 6) {
                 StatusDot(tint: tint)
                 Text(value)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(tint == .secondary ? VHS.dim : tint)
+                    .foregroundStyle(tint == .secondary ? Palette.textDim : tint)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -241,7 +241,7 @@ private struct ContentHeader: View {
             Spacer(minLength: 12)
             if let e = c.activeEvent {
                 VStack(alignment: .trailing, spacing: 2) {
-                    OSDLabel(text: "Event", size: 9, weight: .semibold, color: VHS.dim, tracking: 0.22)
+                    OSDLabel(text: "Event", size: 9, weight: .semibold, color: Palette.textDim, tracking: 0.22)
                     Text(e.name)
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
@@ -249,7 +249,7 @@ private struct ContentHeader: View {
                 Rectangle().fill(Palette.hairline).frame(width: 1, height: 22)
             }
             OSDLabel(text: c.state.name, size: 10, weight: .bold,
-                     color: c.state.isSessionActive ? VHS.amber : VHS.dim, tracking: 0.18)
+                     color: c.state.isSessionActive ? Palette.ink : Palette.textDim, tracking: 0.18)
                 .padding(.leading, 2)
         }
         .padding(.horizontal, 20)
@@ -266,11 +266,11 @@ struct StatusPill: View {
     var body: some View {
         HStack(spacing: 7) {
             StatusDot(tint: tint, pulsing: pulsing)
-            OSDLabel(text: label, size: 10, color: tint == .secondary ? VHS.dim : tint)
+            OSDLabel(text: label, size: 10, color: tint == .secondary ? Palette.textDim : tint)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .foregroundStyle(tint == .secondary ? VHS.dim : tint)
+        .foregroundStyle(tint == .secondary ? Palette.textDim : tint)
         .padding(.leading, 2)
         .fixedSize()
     }
@@ -382,7 +382,7 @@ private struct CameraCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(VHS.amber)
+                .foregroundStyle(Palette.statusWarn)
             }
 
             ZStack {
@@ -419,12 +419,12 @@ private struct CameraCard: View {
                      ? "Nothing on USB. Set the 6D to M or Av, switch it on, and connect the cable."
                      : "No video devices found.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(c.detectedCameras, id: \.self) { d in
                         Text(d).font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(VHS.dim)
+                            .foregroundStyle(Palette.textDim)
                             .lineLimit(1)
                     }
                 }
@@ -443,7 +443,7 @@ private struct CameraCard: View {
             } label: {
                 Label("Test Capture", systemImage: "camera.shutter.button")
             }
-            .buttonStyle(PrimaryButtonStyle(tint: Color(hex: c.settings.accentHex)))
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(!c.cameraState.isReady || c.state.isSessionActive)
 
             Toggle("Live view", isOn: Binding(
@@ -461,7 +461,7 @@ private struct CameraCard: View {
                      ? "Guests see themselves while they wait, so the booth reads as a mirror. It only runs while the booth window is open — but a DSLR held in live view all evening warms up and drains its battery, so keep it on mains power."
                      : "The idle screen stays blank until a session starts.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -474,7 +474,7 @@ private struct CameraCard: View {
                      ? "Guests see themselves as in a mirror, and the print matches."
                      : "True to the scene — any text in shot reads correctly, but the preview flips.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -501,7 +501,7 @@ private struct SessionCard: View {
                         .lineLimit(1)
                     if let p = c.progress {
                         Text("Photo \(p.shot) of \(p.total)")
-                            .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                            .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                     } else if let s = c.currentSession {
                         HStack(spacing: 5) {
                             Text("\(s.photos.count) photo(s) · \(s.layout.title)")
@@ -511,7 +511,7 @@ private struct SessionCard: View {
                                 Text(s.uploadState.label)
                             }
                         }
-                        .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                     }
                 }
                 Spacer()
@@ -528,12 +528,12 @@ private struct SessionCard: View {
                       systemImage: c.state.isSessionActive ? "stop.fill" : "play.fill")
                     .lineLimit(1)
             }
-            .buttonStyle(PrimaryButtonStyle(tint: c.state.isSessionActive ? .red : Color(hex: c.settings.accentHex)))
+            .buttonStyle(PrimaryButtonStyle(destructive: c.state.isSessionActive))
             .disabled(!c.state.isSessionActive && !c.canStartSession)
 
             if c.activeEvent == nil {
                 Text("Pick or create an event above before starting a session.")
-                    .font(.system(size: 11)).foregroundStyle(VHS.amber)
+                    .font(.system(size: 11)).foregroundStyle(Palette.statusWarn)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -562,7 +562,7 @@ private struct SessionCard: View {
                 Label("Print waiting for the button press — \"Print Session\" sends it now.",
                       systemImage: "printer.dotmatrix")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.amber)
+                    .foregroundStyle(Palette.statusWarn)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -575,7 +575,7 @@ private struct SessionCard: View {
             if let s = c.currentSession, let err = s.lastError {
                 Text(err)
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.rec)
+                    .foregroundStyle(Palette.statusBad)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -599,11 +599,11 @@ private struct RetakeStrip: View {
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                OSDLabel(text: "Retake", size: 10, color: VHS.dim, tracking: 0.22)
+                OSDLabel(text: "Retake", size: 10, color: Palette.textDim, tracking: 0.22)
                 Spacer(minLength: 6)
                 if !c.retakeQueue.isEmpty {
                     OSDLabel(text: "\(c.retakeQueue.count) queued",
-                             size: 10, color: VHS.amber, tracking: 0.16)
+                             size: 10, color: Palette.ember, tracking: 0.16)
                 }
             }
 
@@ -622,7 +622,7 @@ private struct RetakeStrip: View {
 
             Text(hint)
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -673,21 +673,21 @@ private struct RetakeNumber: View {
     }
 
     private var background: Color {
-        if queued { return VHS.rec }
-        if shooting { return VHS.amber.opacity(0.30) }
+        if queued { return Palette.statusBad }
+        if shooting { return Palette.statusWarn.opacity(0.30) }
         return Color.white.opacity(taken ? 0.07 : 0.02)
     }
 
     private var foreground: Color {
-        if queued { return VHS.black }
-        if !enabled { return VHS.dim.opacity(0.5) }
-        return taken ? VHS.phosphor : VHS.dim
+        if queued { return Palette.paper }
+        if !enabled { return Palette.textDim.opacity(0.5) }
+        return taken ? Palette.text : Palette.textDim
     }
 
     private var border: Color {
-        if queued { return VHS.rec }
-        if shooting { return VHS.amber }
-        return VHS.phosphor.opacity(taken ? 0.28 : 0.10)
+        if queued { return Palette.statusBad }
+        if shooting { return Palette.statusWarn }
+        return Palette.text.opacity(taken ? 0.28 : 0.10)
     }
 
     private var helpText: String {
@@ -747,10 +747,10 @@ private struct SessionQRRow: View {
                         .background(Color.white)
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    OSDLabel(text: "Album link", size: 10, color: VHS.dim, tracking: 0.22)
+                    OSDLabel(text: "Album link", size: 10, color: Palette.textDim, tracking: 0.22)
                     Text(url.absoluteString)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                         .lineLimit(2)
                         .truncationMode(.middle)
                     HStack(spacing: 8) {
@@ -764,7 +764,7 @@ private struct SessionQRRow: View {
         } else {
             Text("Set the gallery site address in Settings to hand guests a QR code.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -791,7 +791,7 @@ private struct BoothButtonCard: View {
                     accessory: AnyView(
                         StatusPill(icon: "button.programmable",
                                    label: trigger.access.label,
-                                   tint: c.settings.triggerEnabled ? trigger.access.tint : VHS.dim)
+                                   tint: c.settings.triggerEnabled ? trigger.access.tint : Palette.textDim)
                     )) {
 
             Toggle("Start with a USB button", isOn: bind(\.triggerEnabled))
@@ -802,7 +802,7 @@ private struct BoothButtonCard: View {
                 HStack(spacing: 8) {
                     Text(trigger.isLearning ? "Press the button…" : trigger.keyLabel)
                         .font(VHS.mono(11, .bold))
-                        .foregroundStyle(trigger.isLearning ? VHS.amber : VHS.phosphor)
+                        .foregroundStyle(trigger.isLearning ? Palette.statusWarn : Palette.text)
                         .frame(minWidth: 96, alignment: .trailing)
                     Button(trigger.isLearning ? "Cancel" : "Learn") {
                         if trigger.isLearning {
@@ -831,11 +831,11 @@ private struct BoothButtonCard: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("macOS needs Input Monitoring permission before the button can work while another app, or the pointer, is elsewhere. Until then it only works when a Photobooth window is in front.")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.amber)
+                        .foregroundStyle(Palette.statusWarn)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Button("Grant Access") { trigger.requestAccess() }
-                            .buttonStyle(PrimaryButtonStyle(tint: VHS.amber, compact: true))
+                            .buttonStyle(PrimaryButtonStyle(tint: Palette.statusWarn, compact: true))
                         Button("Open Settings") { trigger.openInputMonitoringSettings() }
                             .buttonStyle(QuietButtonStyle())
                     }
@@ -858,7 +858,7 @@ private struct BoothButtonCard: View {
                     : "The finish screen stays up — with the QR code — until somebody presses the button.")
                  : "The finish screen clears itself after the time set in Timing.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
             if c.settings.holdFinishUntilPress {
@@ -872,7 +872,7 @@ private struct BoothButtonCard: View {
                         ? "A safety net: an unattended booth still resets itself. A group that walks off without pressing is not printed — send it later from Gallery."
                         : "A safety net: an unattended booth still resets itself."))
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
             }
 
             HStack(spacing: 8) {
@@ -881,7 +881,7 @@ private struct BoothButtonCard: View {
                 Text(trigger.lastPressAt.map { "Last press \($0.clockStamp) · \(trigger.pressCount) total" }
                      ?? "No press seen yet")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(1)
             }
         }
@@ -924,7 +924,7 @@ private struct TimingCard: View {
 
             Text("A \(c.settings.layout.photoCount)-shot session takes about \(estimate) seconds.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
         }
     }
 
@@ -949,7 +949,7 @@ struct IntStepper: View {
                 .frame(width: touch ? 68 : 52)
                 .multilineTextAlignment(.trailing)
             if !suffix.isEmpty {
-                Text(suffix).font(.system(size: 11)).foregroundStyle(VHS.dim)
+                Text(suffix).font(.system(size: 11)).foregroundStyle(Palette.textDim)
             }
             if touch {
                 // The native stepper is two 11pt arrows stacked — a target no
@@ -983,7 +983,7 @@ struct DoubleStepper: View {
                 .frame(width: touch ? 74 : 58)
                 .multilineTextAlignment(.trailing)
             if !suffix.isEmpty {
-                Text(suffix).font(.system(size: 11)).foregroundStyle(VHS.dim)
+                Text(suffix).font(.system(size: 11)).foregroundStyle(Palette.textDim)
             }
             if touch {
                 StepPad(symbol: "minus") { value = max(range.lowerBound, value - step) }
@@ -1014,7 +1014,7 @@ private struct StepPad: View {
                 .font(.system(size: 13, weight: .bold))
                 .frame(width: 52, height: 52)
                 .background(Color.white.opacity(0.06))
-                .foregroundStyle(isEnabled ? VHS.phosphor : VHS.dim.opacity(0.5))
+                .foregroundStyle(isEnabled ? Palette.text : Palette.textDim.opacity(0.5))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1075,13 +1075,13 @@ private struct CopiesPicker: View {
                         number: n,
                         selected: c.settings.copies == n,
                         side: touch ? 56 : 32,
-                        accent: Color(hex: c.settings.accentHex),
+                        accent: Palette.ink,
                         action: { c.settingsService.settings.copies = n }))
                 }
             }
 
             Text("Prints sent to the SELPHY per session.")
-                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
         }
     }
 }
@@ -1100,7 +1100,7 @@ private struct CopiesNumber: View {
                 .frame(width: side, height: side)
                 .background(selected ? accent : Color.white.opacity(0.05),
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .foregroundStyle(selected ? VHS.black : VHS.phosphor)
+                .foregroundStyle(selected ? Palette.paper : Palette.text)
                 .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .stroke(selected ? accent : Palette.hairline, lineWidth: 1)
                     .allowsHitTesting(false))
@@ -1118,7 +1118,7 @@ private struct LayoutChoice: View {
 
     var body: some View {
         let selected = c.settings.layout == layout
-        let accent = Color(hex: c.settings.accentHex)
+        let accent = Palette.ink
 
         Button {
             c.settingsService.settings.layout = layout
@@ -1129,7 +1129,7 @@ private struct LayoutChoice: View {
                         schematic.frame(width: touch ? 72 : 52)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(layout.title).font(.system(size: 12, weight: .semibold))
-                            Text(layout.subtitle).font(.system(size: 11)).foregroundStyle(VHS.dim)
+                            Text(layout.subtitle).font(.system(size: 11)).foregroundStyle(Palette.textDim)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
@@ -1208,7 +1208,7 @@ private struct PrinterCard: View {
                 Spacer()
                 Text("\(c.printer.queueDepth) job(s)")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(c.printer.queueDepth > 0 ? VHS.amber : .secondary)
+                    .foregroundStyle(c.printer.queueDepth > 0 ? Palette.statusWarn : .secondary)
             }
 
             if !c.printer.jobs.isEmpty {
@@ -1218,12 +1218,12 @@ private struct PrinterCard: View {
                             Image(systemName: j.done ? "checkmark.circle.fill"
                                   : (j.failed ? "xmark.circle.fill" : "arrow.triangle.2.circlepath"))
                                 .font(.system(size: 10))
-                                .foregroundStyle(j.done ? VHS.ok : (j.failed ? .red : VHS.amber))
+                                .foregroundStyle(j.done ? Palette.statusOK : (j.failed ? .red : Palette.statusWarn))
                             Text(j.id).font(.system(size: 10, design: .monospaced))
                             Spacer()
                             Text(j.submittedAt.clockStamp)
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(VHS.dim)
+                                .foregroundStyle(Palette.textDim)
                         }
                     }
                 }
@@ -1236,7 +1236,7 @@ private struct PrinterCard: View {
             } label: {
                 Label("Test Print", systemImage: "printer.fill")
             }
-            .buttonStyle(PrimaryButtonStyle(tint: Color(hex: c.settings.accentHex)))
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(!c.printer.state.isReady || c.isPrintBusy)
 
             HStack(spacing: 8) {
@@ -1249,7 +1249,7 @@ private struct PrinterCard: View {
 
             Text("Prints are sent as flattened \(c.settings.dpi) DPI 4×6 JPEGs through the macOS print system.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1265,16 +1265,16 @@ private struct BoothWindowCard: View {
         SectionCard(title: "Booth Window",
                     accessory: AnyView(
                         HStack(spacing: 6) {
-                            StatusDot(tint: c.boothWindowOpen ? VHS.ok : .secondary)
+                            StatusDot(tint: c.boothWindowOpen ? Palette.statusOK : .secondary)
                             Text(c.boothWindowOpen ? "Open" : "Closed".uppercased())
                                 .font(VHS.mono(10, .semibold))
                                 .tracking(0.8)
-                                .foregroundStyle(c.boothWindowOpen ? VHS.ok : .secondary)
+                                .foregroundStyle(c.boothWindowOpen ? Palette.statusOK : .secondary)
                         })) {
 
             Text("The guest screen is its own window, so it can live full screen on the booth display while you keep this console on the laptop.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1302,7 +1302,7 @@ private struct BoothWindowCard: View {
                     .font(.system(size: 12))
                 Text("For a booth screen carried over USB, wireless or screen sharing. Stops the drifting tracking band, the blinking lamps and the colour fringing, so the guest screen only redraws when something actually changes. Leave off on a directly-attached monitor.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1317,7 +1317,7 @@ private struct BoothWindowCard: View {
                 Label(c.boothWindowOpen ? "Close Booth Window" : "Open Booth Window",
                       systemImage: c.boothWindowOpen ? "xmark.rectangle" : "rectangle.on.rectangle")
             }
-            .buttonStyle(PrimaryButtonStyle(tint: c.boothWindowOpen ? .secondary : Color(hex: c.settings.accentHex)))
+            .buttonStyle(PrimaryButtonStyle())
 
             if c.boothWindowOpen {
                 HStack(spacing: 8) {
@@ -1332,7 +1332,7 @@ private struct BoothWindowCard: View {
                  ? "\(screens.count) displays detected."
                  : "One display detected — the booth window will cover this screen.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
         }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didChangeScreenParametersNotification)) { _ in
@@ -1353,7 +1353,7 @@ private struct StorageCard: View {
                     .font(.system(size: 12, weight: .medium))
                 Text(c.storage.root.path)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
@@ -1373,7 +1373,7 @@ private struct StorageCard: View {
                 Spacer()
                 Text("\(c.storage.events.count)")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
             }
 
             Divider().opacity(0.4)
@@ -1383,14 +1383,14 @@ private struct StorageCard: View {
                 Spacer()
                 Text("\(c.storage.sessions.count)")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
             }
             HStack {
                 Text("Free space").font(.system(size: 12, weight: .medium))
                 Spacer()
                 Text(c.storage.freeSpaceMB.asDiskSize)
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(c.storage.freeSpaceMB < 500 ? VHS.amber : .secondary)
+                    .foregroundStyle(c.storage.freeSpaceMB < 500 ? Palette.statusWarn : .secondary)
             }
 
             Toggle("Keep originals on the camera card", isOn: Binding(
@@ -1428,7 +1428,7 @@ private struct LogTab: View {
                     .frame(maxWidth: 280)
                 Spacer()
                 Text("\(shown.count) line(s)")
-                    .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 Button("Reveal Log File") {
                     NSWorkspace.shared.activateFileViewerSelecting([log.todayLogURL()])
                 }
@@ -1445,7 +1445,7 @@ private struct LogTab: View {
                             HStack(alignment: .top, spacing: 8) {
                                 Text(e.at.clockStamp)
                                     .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(VHS.dim.opacity(0.65))
+                                    .foregroundStyle(Palette.textDim.opacity(0.65))
                                 Text(e.level.rawValue)
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(e.tint)

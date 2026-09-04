@@ -11,18 +11,18 @@ struct EventCard: View {
     @State private var confirmDelete = false
 
     var body: some View {
-        let accent = Color(hex: c.settings.accentHex)
+        let accent = Palette.ink
         let active = c.activeEvent
 
         SectionCard(title: "Event",
                     accessory: AnyView(
                         HStack(spacing: 6) {
-                            StatusDot(tint: active == nil ? VHS.amber : VHS.ok,
+                            StatusDot(tint: active == nil ? Palette.statusWarn : Palette.statusOK,
                                       pulsing: active == nil)
                             Text(active == nil ? "None selected" : "Active".uppercased())
                                 .font(VHS.mono(10, .semibold))
                                 .tracking(0.8)
-                                .foregroundStyle(active == nil ? VHS.amber : VHS.ok)
+                                .foregroundStyle(active == nil ? Palette.statusWarn : Palette.statusOK)
                         })) {
 
             if let e = active {
@@ -37,11 +37,11 @@ struct EventCard: View {
                         if !e.venue.isEmpty { Text("·"); Text(e.venue) }
                     }
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(1)
                     Text(e.id)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(VHS.dim.opacity(0.65))
+                        .foregroundStyle(Palette.textDim.opacity(0.65))
                         .textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,16 +53,16 @@ struct EventCard: View {
                 HStack {
                     Text("\(count) session\(count == 1 ? "" : "s") · \(photos) photo\(photos == 1 ? "" : "s")")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                     Spacer()
                 }
             } else {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "calendar.badge.plus")
-                        .foregroundStyle(VHS.amber)
+                        .foregroundStyle(Palette.statusWarn)
                     Text("No event yet. Create one so this booking's photographs stay separate from the last client's.")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -179,7 +179,7 @@ struct EventForm: View {
             if initial == nil, !name.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("Folder: \(EventRecord.makeSlug(name: name, date: date))")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(1).truncationMode(.middle)
             }
 
@@ -218,12 +218,12 @@ struct GallerySiteCard: View {
     @ObservedObject var uploader: UploadService
 
     var body: some View {
-        let accent = Color(hex: c.settings.accentHex)
+        let accent = Palette.ink
         let tint: Color = {
             switch uploader.reachability {
-            case .online: return VHS.ok
-            case .offline: return VHS.amber
-            case .unknown: return VHS.dim
+            case .online: return Palette.statusOK
+            case .offline: return Palette.statusWarn
+            case .unknown: return Palette.textDim
             }
         }()
 
@@ -294,12 +294,12 @@ struct GallerySiteCard: View {
             HStack {
                 Label("\(uploader.pendingCount) waiting", systemImage: "tray.full")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(uploader.pendingCount > 0 ? VHS.amber : .secondary)
+                    .foregroundStyle(uploader.pendingCount > 0 ? Palette.statusWarn : .secondary)
                 Spacer()
                 if let s = uploader.lastSuccessAt {
                     Text("last \(s.clockStamp)")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(VHS.dim.opacity(0.65))
+                        .foregroundStyle(Palette.textDim.opacity(0.65))
                 }
             }
 
@@ -307,14 +307,14 @@ struct GallerySiteCard: View {
                 HStack(spacing: 7) {
                     ProgressView().controlSize(.small)
                     Text("Uploading \(current)…")
-                        .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 }
             }
 
             if let firstError = uploader.queue.compactMap(\.lastError).first {
                 Text(firstError)
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.amber)
+                    .foregroundStyle(Palette.statusWarn)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -322,7 +322,7 @@ struct GallerySiteCard: View {
                  ? "No internet at the venue is fine — sessions wait on disk and go up when the Mac is next online."
                  : "No internet at the venue is fine — sessions stay queued on disk and upload when the Mac is next online. You can also drag a session folder into the site's Upload page.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
@@ -370,7 +370,7 @@ private struct GitHubPagesRows: View {
                 HStack(spacing: 8) {
                     Text(c.settings.pagesRepoPath.isEmpty ? "Not chosen" : c.settings.pagesRepoPath)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(c.settings.pagesRepoPath.isEmpty ? VHS.amber : VHS.dim)
+                        .foregroundStyle(c.settings.pagesRepoPath.isEmpty ? Palette.statusWarn : Palette.textDim)
                         .lineLimit(1)
                         .truncationMode(.head)
                     Spacer(minLength: 0)
@@ -416,15 +416,15 @@ private struct GitHubPagesRows: View {
                     Button("Refresh") { refresh() }
                         .buttonStyle(.plain)
                         .font(.system(size: 10))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                 }
                 .font(.system(size: 11))
-                .foregroundStyle(size.bytes > 900_000_000 ? VHS.amber : VHS.dim)
+                .foregroundStyle(size.bytes > 900_000_000 ? Palette.statusWarn : Palette.textDim)
 
                 if size.bytes > 900_000_000 {
                     Text("GitHub asks that repositories stay under 1 GB. Start a fresh repository for the next event.")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.amber)
+                        .foregroundStyle(Palette.statusWarn)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -433,7 +433,7 @@ private struct GitHubPagesRows: View {
             // account, and it must never be handed a password or a token.
             if !repoReady || c.settings.pagesRemote.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("ONE-TIME SET-UP").font(VHS.mono(9, .semibold)).tracking(0.8).foregroundStyle(VHS.dim)
+                    Text("ONE-TIME SET-UP").font(VHS.mono(9, .semibold)).tracking(0.8).foregroundStyle(Palette.textDim)
                     Text("1. On github.com, create a public repository — call it photos.")
                     Text("2. Paste its address above and press Set Up Site.")
                     Text("3. In Terminal, run: git -C <site folder> push -u origin main")
@@ -442,13 +442,13 @@ private struct GitHubPagesRows: View {
                     Text("5. Put the address GitHub gives you in Site address above.")
                 }
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
             Text("A free GitHub account cannot serve a private site: everything published here is public to anyone with the address, and the repository is browsable. Addresses are unguessable and search engines are asked to stay away — that is obscurity, not privacy.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.amber)
+                .foregroundStyle(Palette.statusWarn)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .task { refresh() }
@@ -506,10 +506,10 @@ private struct CloudinaryRows: View {
 
             if let cloud = c.cloudinary {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("A guest's code opens").font(.system(size: 11)).foregroundStyle(VHS.dim)
+                    Text("A guest's code opens").font(.system(size: 11)).foregroundStyle(Palette.textDim)
                     Text(cloud.photoURL(token: "abcd123456", fileName: "print.jpg")?.absoluteString ?? "")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(VHS.dim.opacity(0.8))
+                        .foregroundStyle(Palette.textDim.opacity(0.8))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -517,23 +517,23 @@ private struct CloudinaryRows: View {
 
             Text("The QR code opens the session's print — one image holding every photograph from that session, which guests save with a long press. Cloudinary sends HTML and SVG as downloads rather than pages, so an image is the only thing a scanned code can usefully open here.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("THE PRESET NEEDS").font(VHS.mono(9, .semibold)).tracking(0.8).foregroundStyle(VHS.dim)
+                Text("THE PRESET NEEDS").font(VHS.mono(9, .semibold)).tracking(0.8).foregroundStyle(Palette.textDim)
                 Text("Signing mode: Unsigned")
                 Text("Resource type: Image — only photographs go to Cloudinary")
                 Text("Unique filename: OFF — the address must stay predictable")
                 Text("Overwrite: ON and Invalidate: ON — so a retake replaces the old photo")
             }
             .font(.system(size: 11))
-            .foregroundStyle(VHS.dim)
+            .foregroundStyle(Palette.textDim)
             .fixedSize(horizontal: false, vertical: true)
 
             Text("Anyone with the address can open a session. Cloudinary serves it publicly and the app cannot make it private — the token in the address is all that keeps it obscure.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.amber)
+                .foregroundStyle(Palette.statusWarn)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -547,19 +547,19 @@ struct AlbumCard: View {
     private var event: EventRecord? { c.activeEvent }
 
     var body: some View {
-        let accent = Color(hex: c.settings.accentHex)
+        let accent = Palette.ink
 
         SectionCard(title: "Album Page",
                     accessory: AnyView(
                         Text(c.settings.albumOutputPath.isEmpty ? "NO FOLDER" : "READY")
                             .font(VHS.mono(10, .semibold))
                             .tracking(0.8)
-                            .foregroundStyle(c.settings.albumOutputPath.isEmpty ? VHS.amber : VHS.ok)
+                            .foregroundStyle(c.settings.albumOutputPath.isEmpty ? Palette.statusWarn : Palette.statusOK)
                     )) {
 
             Text("A private page for the whole event — every session, in order, behind a password you hand to the client.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -567,7 +567,7 @@ struct AlbumCard: View {
                 HStack(spacing: 8) {
                     Text(c.settings.albumOutputPath.isEmpty ? "Not chosen" : c.settings.albumOutputPath)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(c.settings.albumOutputPath.isEmpty ? VHS.amber : VHS.dim)
+                        .foregroundStyle(c.settings.albumOutputPath.isEmpty ? Palette.statusWarn : Palette.textDim)
                         .lineLimit(1).truncationMode(.head)
                     Spacer(minLength: 0)
                     Button("Choose…") { chooseFolder() }
@@ -584,7 +584,7 @@ struct AlbumCard: View {
                     .font(.system(size: 11, design: .monospaced))
                 Text("The folder you upload the album pages to. Nothing here uploads them — this is only how the app works out the address for the link and its QR code.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -605,10 +605,10 @@ struct AlbumCard: View {
                         }
                         VStack(alignment: .leading, spacing: 5) {
                             Text("ALBUM CODE").font(VHS.mono(9, .semibold)).tracking(0.8)
-                                .foregroundStyle(VHS.dim)
+                                .foregroundStyle(Palette.textDim)
                             Text(url.absoluteString)
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(VHS.dim)
+                                .foregroundStyle(Palette.textDim)
                                 .lineLimit(3)
                                 .fixedSize(horizontal: false, vertical: true)
                             Button("Open") { NSWorkspace.shared.open(url) }
@@ -670,22 +670,22 @@ struct AlbumCard: View {
 
                 Text("Preview opens through a small server on this Mac only — a page opened straight from a file cannot unlock, because browsers withhold the decryption tools from file addresses. Put the page on any https address to send it to a client.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text("Only sessions already on Cloudinary go into the page — anything still queued is left out rather than shown as a broken picture. Rebuild after the queue drains.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Pick an event above to give it an album.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.amber)
+                    .foregroundStyle(Palette.statusWarn)
             }
 
             Text("The page holds nothing readable without the password — not the photographs, not even the client's name. Anyone who is given a direct photo address keeps it, so treat the password as the lock on the front door, not on every window.")
                 .font(.system(size: 11))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

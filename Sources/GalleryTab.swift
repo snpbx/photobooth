@@ -61,7 +61,7 @@ struct GalleryTab: View {
                 .frame(maxWidth: 320)
             Spacer()
             Text("\(filtered.count) session(s)")
-                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
             Button("Reload") { c.storage.reload() }.buttonStyle(.bordered)
             Button("Open Folder") { NSWorkspace.shared.open(c.storage.eventsRoot) }.buttonStyle(.bordered)
         }
@@ -124,7 +124,7 @@ struct GalleryTab: View {
                 Spacer(minLength: 6)
                 Text("\(count)")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(VHS.dim.opacity(0.65))
+                    .foregroundStyle(Palette.textDim.opacity(0.65))
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
@@ -166,12 +166,12 @@ struct GalleryTab: View {
                 VStack(spacing: 8) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 34, weight: .light))
-                        .foregroundStyle(VHS.dim.opacity(0.65))
+                        .foregroundStyle(Palette.textDim.opacity(0.65))
                     Text("No sessions yet")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                     Text("Finished sessions appear here with their prints.")
-                        .font(.system(size: 11)).foregroundStyle(VHS.dim.opacity(0.65))
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim.opacity(0.65))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 70)
@@ -204,7 +204,7 @@ private struct SessionTile: View {
                 if let img = c.storage.thumbnail(for: rec) {
                     Image(nsImage: img).resizable().aspectRatio(contentMode: .fit).padding(5)
                 } else {
-                    Image(systemName: "photo").font(.system(size: 22)).foregroundStyle(VHS.dim.opacity(0.65))
+                    Image(systemName: "photo").font(.system(size: 22)).foregroundStyle(Palette.textDim.opacity(0.65))
                 }
             }
             .aspectRatio(2.0/3.0, contentMode: .fit)
@@ -232,7 +232,7 @@ private struct SessionTile: View {
                     }
                 }
                 .font(.system(size: 10))
-                .foregroundStyle(VHS.dim)
+                .foregroundStyle(Palette.textDim)
             }
         }
         .padding(8)
@@ -257,7 +257,7 @@ private struct SessionDetail: View {
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
                         .textSelection(.enabled)
                     Text(rec.startedAt.displayStamp)
-                        .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 }
 
                 infoGrid
@@ -267,7 +267,7 @@ private struct SessionDetail: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("FINAL PRINT")
                             .font(.system(size: 10, weight: .semibold)).tracking(1)
-                            .foregroundStyle(VHS.dim)
+                            .foregroundStyle(Palette.textDim)
                         if let img = NSImage(contentsOf: url) {
                             Image(nsImage: img)
                                 .resizable().aspectRatio(contentMode: .fit)
@@ -285,7 +285,7 @@ private struct SessionDetail: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("ANIMATED GIF")
                             .font(.system(size: 10, weight: .semibold)).tracking(1)
-                            .foregroundStyle(VHS.dim)
+                            .foregroundStyle(Palette.textDim)
                         if let img = NSImage(contentsOf: url) {
                             // Animating here, unlike on the guest screen: the
                             // console is a place the operator is looking, and
@@ -306,7 +306,7 @@ private struct SessionDetail: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("ORIGINALS")
                             .font(.system(size: 10, weight: .semibold)).tracking(1)
-                            .foregroundStyle(VHS.dim)
+                            .foregroundStyle(Palette.textDim)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 74, maximum: 120), spacing: 6)],
                                   spacing: 6) {
                             ForEach(rec.photos) { p in
@@ -335,7 +335,7 @@ private struct SessionDetail: View {
 
                 if let err = rec.lastError {
                     Text(err)
-                        .font(.system(size: 11)).foregroundStyle(VHS.rec)
+                        .font(.system(size: 11)).foregroundStyle(Palette.statusBad)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -404,7 +404,7 @@ private struct SessionDetail: View {
 
     private func row(_ k: String, _ v: String, tint: Color = .primary) -> some View {
         HStack(alignment: .top) {
-            Text(k).font(.system(size: 11)).foregroundStyle(VHS.dim)
+            Text(k).font(.system(size: 11)).foregroundStyle(Palette.textDim)
             Spacer(minLength: 10)
             Text(v).font(.system(size: 11, weight: .medium)).foregroundStyle(tint)
                 .multilineTextAlignment(.trailing)

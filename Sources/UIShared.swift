@@ -3,19 +3,57 @@ import AppKit
 
 // MARK: - Palette
 
+/// The Admin console's palette — shadcn/ui's tokens, "clinical blueprint on
+/// frosted paper": a monochrome stack of three surfaces, ink type, and one red
+/// kept for destruction.
+///
+/// The console only. The guest screen stays the 1990s camcorder it was: guests
+/// look at a black viewfinder, operators at a bright panel, and the two have
+/// never needed to match.
 enum Palette {
+    // Guest screen — unchanged.
     static let boothBG      = VHS.black
     static let boothBGLift  = VHS.field
-    static let panel        = Color(red: 0.055, green: 0.058, blue: 0.066)
-    /// Card surface: a shade off the page, no more. Lifting a card with a shadow
-    /// would mean an offscreen blur pass per card on every redraw, which is the
-    /// cost the console was stripped of in the first place — and which a screen
-    /// carried over USB pays for twice.
-    static let card         = Color(red: 0.043, green: 0.046, blue: 0.053)
-    static let panelHead    = Color(red: 0.086, green: 0.090, blue: 0.100)
-    static let hairline     = VHS.phosphor.opacity(0.16)
-    static let text         = VHS.phosphor
-    static let textDim      = VHS.dim
+
+    // Surfaces, lightest to darkest use.
+    /// Page background, muted fills, secondary buttons.
+    static let canvas       = Color(hex: "#F5F5F5")
+    /// Card surfaces and popovers.
+    static let paper        = Color(hex: "#FFFFFF")
+    /// Sidebar, input resting state — one tonal step off the canvas, so the
+    /// navigation reads as its own layer without needing a divider.
+    static let surfaceAlt   = Color(hex: "#FAFAFA")
+
+    // Ink.
+    static let ink          = Color(hex: "#0A0A0A")
+    static let inkSoft      = Color(hex: "#171717")
+    static let midGray      = Color(hex: "#737373")
+    static let hairline     = Color(hex: "#E5E5E5")
+
+    /// Reserved for destruction. The only chromatic hue the system allows.
+    static let ember        = Color(hex: "#E7000B")
+
+    /// Status is the one place this console departs from the reference. The
+    /// system is monochrome and keeps red for destructive actions only, but an
+    /// operator has to read "camera gone" across a dark room in one glance, and
+    /// a grey dot cannot say it. These are the reference's hues darkened until
+    /// they hold contrast on paper.
+    static let statusOK     = Color(hex: "#15803D")
+    static let statusWarn   = Color(hex: "#A16207")
+    static let statusBad    = Color(hex: "#E7000B")
+
+    // Semantic aliases the console draws through.
+    static let panel        = surfaceAlt
+    static let card         = paper
+    static let panelHead    = canvas
+    static let text         = ink
+    static let textDim      = midGray
+
+    // Shape, from the reference: pills for anything interactive, 24 for cards.
+    static let cardRadius: CGFloat   = 24
+    static let nestedRadius: CGFloat = 10
+    static let smallRadius: CGFloat  = 6
+    static let cardPadding: CGFloat  = 20
 }
 
 // MARK: - Booth stage
@@ -175,16 +213,18 @@ struct SectionCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, touch ? 18 : 13)
         }
-        // A surface, so each card reads as one thing rather than a run of rows
-        // separated by rules. Deliberately a flat fill and a one-pixel border:
-        // no shadow, no blur, nothing that costs an offscreen pass per card.
-        .padding(touch ? 18 : 14)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        // Decoration only. An overlay is drawn above the card's contents and
-        // takes part in hit testing unless told not to, which puts a border
-        // across the top of every button inside it.
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(Palette.hairline.opacity(0.7), lineWidth: 1)
+        // Paper on canvas, hairline edge, 24pt corners, 20pt padding — the
+        // reference's card, minus its shadow stack. Three stacked shadows are an
+        // offscreen pass per card on every redraw, which is the cost this
+        // console was stripped of and which a screen carried over USB pays for
+        // twice. The hairline alone defines the edge, which the system says it
+        // must do anyway.
+        .padding(touch ? Palette.cardPadding + 4 : Palette.cardPadding)
+        .background(Palette.paper, in: RoundedRectangle(cornerRadius: Palette.cardRadius, style: .continuous))
+        // Decoration only: an overlay is drawn above the card's contents and
+        // takes part in hit testing unless told not to.
+        .overlay(RoundedRectangle(cornerRadius: Palette.cardRadius, style: .continuous)
+            .stroke(Palette.hairline, lineWidth: 1)
             .allowsHitTesting(false))
     }
 }
@@ -349,7 +389,12 @@ struct FramingGuide: View {
 // MARK: - Buttons
 
 struct PrimaryButtonStyle: ButtonStyle {
-    var tint: Color = VHS.amber
+    /// Kept so existing call sites still compile; the console ignores it. The
+    /// operator's accent belongs to the print and the booth screen, and the
+    /// reference is explicit that no brand hue enters the interface.
+    var tint: Color = Palette.ink
+    /// Cancel and its like: the one red the system allows.
+    var destructive: Bool = false
     var compact: Bool = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.touchControls) private var touch
@@ -363,14 +408,23 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, touch ? (compact ? 15 : 20) : (compact ? 6 : 8))
             .frame(maxWidth: .infinity)
             .frame(minHeight: touch ? (compact ? 50 : 60) : 0)
-            .background(fill(pressed: configuration.isPressed))
-            .foregroundStyle(isEnabled ? VHS.black : VHS.dim)
-            .contentShape(Rectangle())
+            .background(fill(pressed: configuration.isPressed), in: Capsule())
+            .foregroundStyle(isEnabled ? Palette.surfaceAlt : Palette.midGray)
+            .contentShape(Capsule())
     }
 
+    /// Ink on paper: the reference's one and only primary treatment. `tint` is
+    /// ignored here — the operator's accent colour belongs to the print and the
+    /// booth, and the system is explicit that no brand hue enters the interface.
+    ///
+    /// The shape is a `Capsule` rather than the reference's flat 18pt radius:
+    /// 18 on a 36pt button is a pill, and pill geometry is what the system
+    /// actually asks for. These buttons run 44–60pt for touch, where 18 would
+    /// read as a rounded rectangle instead.
     private func fill(pressed: Bool) -> Color {
-        guard isEnabled else { return Color.white.opacity(0.04) }
-        return tint.opacity(pressed ? 0.72 : 1)
+        guard isEnabled else { return Palette.canvas }
+        if destructive { return pressed ? Palette.ember.opacity(0.8) : Palette.ember }
+        return pressed ? Palette.midGray : Palette.ink
     }
 }
 
@@ -388,15 +442,17 @@ struct QuietButtonStyle: ButtonStyle {
             .padding(.vertical, touch ? 18 : 7)
             .frame(maxWidth: .infinity)
             .frame(minHeight: touch ? 54 : 0)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.045))
+            .background(configuration.isPressed ? Palette.hairline : Palette.canvas, in: Capsule())
             .foregroundStyle(tint)
             // Without this the gaps between glyphs are dead space to a fingertip.
-            .contentShape(Rectangle())
+            .contentShape(Capsule())
     }
 
+    /// The reference's secondary: a tonal sibling of the primary, same shape and
+    /// type, differing only in lightness. Destructive borrows the one red.
     private var tint: Color {
-        guard isEnabled else { return VHS.dim.opacity(0.6) }
-        return destructive ? VHS.rec : VHS.phosphor
+        guard isEnabled else { return Palette.midGray.opacity(0.5) }
+        return destructive ? Palette.ember : Palette.ink
     }
 }
 

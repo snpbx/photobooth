@@ -90,16 +90,35 @@ macOS ships no dot-matrix face, so the character is **built rather than set**:
 heavy monospaced glyphs at wide tracking, a red/cyan split behind the white and a
 little bloom (`VHSText`). Nothing to license, nothing to bundle.
 
-The Admin console speaks the same language — mono uppercase headings and softkeys,
-square status lamps, amber and phosphor on black — but it is deliberately the
-minimal version. No scanline overlay, no corner brackets, no chromatic fringe, no
-glows. Body copy stays at normal weight and native controls are left alone,
-because a panel used at 2am has to be readable first and atmospheric second.
+**The console does not follow the booth.** Guests look at a black viewfinder;
+the operator looks at a bright panel, and the two have never needed to match.
+The console is built to shadcn/ui's tokens — "clinical blueprint on frosted
+paper": a three-tone monochrome surface stack (canvas `#f5f5f5` → surface-alt
+`#fafafa` → paper `#ffffff`), ink `#0a0a0a` type, mid-gray `#737373` for helper
+copy, hairline `#e5e5e5` edges, and a single ember `#e7000b` kept for
+destruction. Cards are paper at 24pt corners with 20pt padding; anything
+interactive is a pill.
 
-That is a performance decision as much as a visual one. `VHSText` has a flat path
-(`fringe: 0`) that renders one `Text` instead of three plus two blurs and a
-shadow, and the console uses `OSDLabel`, which is just monospaced capitals with
-tracking.
+Three deliberate departures from that reference:
+
+- **Buttons are capsules, not a flat 18pt radius.** 18pt on the reference's 36pt
+  button *is* a pill, and pill geometry is what the system actually asks for.
+  These run 44–60pt for touch, where a fixed 18 would read as a rounded box.
+- **No card shadow.** The system stacks three; that is an offscreen pass per card
+  on every redraw, which this console was stripped of once already and which a
+  screen carried over USB pays for twice. The hairline defines the edge, which
+  the system says it must do anyway.
+- **Status stays chromatic.** The palette is monochrome and reserves red for
+  destructive actions, but an operator has to read "camera gone" across a dark
+  room at a glance, and a grey dot cannot say it. The status hues are darkened
+  until they hold contrast on paper.
+
+Geist is not on macOS, so the system font stands in for it; small uppercase
+captions keep the monospaced treatment they had.
+
+`VHSText` still has a flat path (`fringe: 0`) that renders one `Text` instead of
+three plus two blurs and a shadow, and the console's captions use `OSDLabel`,
+which is just capitals with tracking.
 
 **Navigation runs down the left**, not across the top. On a 1180 × 820 iPad the
 console is wider than it is tall, so a vertical rail spends the axis there is

@@ -54,7 +54,7 @@ private struct GuestQRCard: View {
             if c.settings.printQRCode {
                 Text("The footer strip grows to about 24 mm so the printed code is large enough for a phone to read.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -72,12 +72,12 @@ private struct GuestQRCard: View {
             if c.settings.qrTarget == .eventAlbum {
                 Text("The code opens the event's album page — every session from the night, online. It is password-protected, so tell guests the password or hand it to the client only.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
                 if let problem = c.qrTargetProblem {
                     Text(problem)
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.amber)
+                        .foregroundStyle(Palette.statusWarn)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 LabeledRow(label: "Caption") {
@@ -101,7 +101,7 @@ private struct GuestQRCard: View {
                      ? "With no internet at the venue the code is held back rather than sent to a page that does not exist yet. It appears by itself the moment the upload lands — even with the finish screen still up. The 4×6 still carries its printed code."
                      : "The code is shown as soon as the session ends. Scanned before the upload finishes, it leads nowhere.")
                     .font(.system(size: 11))
-                    .foregroundStyle(c.settings.qrRequiresUpload ? VHS.dim : VHS.amber)
+                    .foregroundStyle(c.settings.qrRequiresUpload ? Palette.textDim : Palette.statusWarn)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Where the photos code points depends on the host, so the copy
@@ -109,17 +109,17 @@ private struct GuestQRCard: View {
                 if let problem = c.qrTargetProblem, c.settings.qrTarget == .sessionAlbum {
                     Text(problem)
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.amber)
+                        .foregroundStyle(Palette.statusWarn)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if c.settings.galleryHost == .cloudinary {
                     Text("Opens that session's print on Cloudinary — the one image holding every photograph from the session.")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if !c.settings.uploadBaseURL.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text("Links to that session's own page on \(c.settings.uploadBaseURL).")
                         .font(.system(size: 11))
-                        .foregroundStyle(VHS.dim)
+                        .foregroundStyle(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -151,7 +151,7 @@ private struct GuestQRCard: View {
                         if let url = c.customQRURL {
                             Text(url.absoluteString)
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(VHS.dim)
+                                .foregroundStyle(Palette.textDim)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                             Button("Open Link") { NSWorkspace.shared.open(url) }
@@ -161,7 +161,7 @@ private struct GuestQRCard: View {
                                  ? "Type the address the code should open. \"instagram.com/yourbooth\" is enough — https:// is added for you."
                                  : "That does not look like a web address. Check for a typo or a stray space.")
                                 .font(.system(size: 11))
-                                .foregroundStyle(VHS.amber)
+                                .foregroundStyle(Palette.statusWarn)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -172,7 +172,7 @@ private struct GuestQRCard: View {
             if c.settings.qrTarget == .both {
                 Text("Two cards on the finish screen — their photos, and your page. The 4×6 has room for one, and carries the photo link.")
                     .font(.system(size: 11))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -265,7 +265,7 @@ private struct BrandingCard: View {
             Text(hasFooterImage
                  ? "Printed in place of the footer text. PNG transparency is kept, so a logo sits on the print background."
                  : "Optional. A PNG, JPEG or TIFF printed in place of the footer text — a client logo, say. It is copied into the app's own folder, so it keeps printing after the original is moved or deleted.")
-                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .disabled(!c.settings.footerEnabled)
@@ -295,7 +295,7 @@ private struct BrandingCard: View {
             Text(label).font(.system(size: 12, weight: .medium))
             TextField("", text: text).textFieldStyle(.roundedBorder)
             if let help {
-                Text(help).font(.system(size: 11)).foregroundStyle(VHS.dim)
+                Text(help).font(.system(size: 11)).foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -373,10 +373,10 @@ private struct PrintQualityCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(c.settings.layout.title).font(.system(size: 12, weight: .semibold))
                     Text("Canvas \(Int(c.settings.pixelSize.width)) × \(Int(c.settings.pixelSize.height)) px")
-                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(VHS.dim)
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.textDim)
                     Text(String(format: "Slot aspect %.2f : 1",
                                 LayoutRenderer.cellAspect(for: c.settings.layout, settings: c.settings)))
-                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(VHS.dim)
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.textDim)
                 }
                 Spacer(minLength: 0)
             }
@@ -480,7 +480,7 @@ private struct CameraAdvancedCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("CANON EOS 6D SETUP")
                     .font(.system(size: 10, weight: .semibold)).tracking(1)
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                 bullet("Mode dial on M or Av — fully automatic modes block remote capture.")
                 bullet("Set the lens to AF and leave the card in; shots are copied off and then removed.")
                 bullet("Turn off auto power-off, or the camera sleeps between guests.")
@@ -491,8 +491,8 @@ private struct CameraAdvancedCard: View {
 
     private func bullet(_ s: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Text("•").foregroundStyle(VHS.dim)
-            Text(s).font(.system(size: 11)).foregroundStyle(VHS.dim)
+            Text("•").foregroundStyle(Palette.textDim)
+            Text(s).font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -531,7 +531,7 @@ private struct InterfaceCard: View {
                     set: { c.settingsService.settings.adminPasscode = $0 }))
                     .textFieldStyle(.roundedBorder)
                 Text("Asked for when leaving Booth Mode, so guests cannot reach these controls.")
-                    .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -540,7 +540,7 @@ private struct InterfaceCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("SHORTCUTS")
                     .font(.system(size: 10, weight: .semibold)).tracking(1)
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                 shortcut("⌘B", "Open or close the booth window")
                 shortcut("⌘1 / ⌘2", "Admin window / booth window")
                 shortcut("ESC", "From the booth window, reveal Admin")
@@ -559,7 +559,7 @@ private struct InterfaceCard: View {
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 4))
                 .frame(minWidth: 54, alignment: .center)
-            Text(what).font(.system(size: 11)).foregroundStyle(VHS.dim)
+            Text(what).font(.system(size: 11)).foregroundStyle(Palette.textDim)
             Spacer(minLength: 0)
         }
     }
@@ -575,14 +575,14 @@ private struct MaintenanceCard: View {
                 Text("Settings file").font(.system(size: 12, weight: .medium))
                 Text(c.settingsService.settingsFileURL.path)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Log folder").font(.system(size: 12, weight: .medium))
                 Text(Log.shared.logDirectory.path)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(VHS.dim)
+                    .foregroundStyle(Palette.textDim)
                     .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
             }
 
@@ -603,7 +603,7 @@ private struct MaintenanceCard: View {
             Divider().opacity(0.4)
 
             Text("Photobooth \(Bundle.main.appVersion) · \(c.settings.cameraBackend.title)")
-                .font(.system(size: 11)).foregroundStyle(VHS.dim)
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
         }
     }
 }
