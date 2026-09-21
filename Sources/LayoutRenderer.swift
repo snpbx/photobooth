@@ -429,6 +429,14 @@ enum LayoutRenderer {
         ctx.restoreGState()
     }
 
+    /// A numbered stand-in, for proofing a layout before any photographs exist.
+    static func placeholderImage(number: Int, size: CGSize = CGSize(width: 900, height: 600)) -> CGImage? {
+        try? draw(canvas: size, settings: AppSettings()) { ctx in
+            drawPlaceholder(ctx, rect: CGRect(origin: .zero, size: size),
+                            canvasH: size.height, number: number)
+        }
+    }
+
     private static func drawPlaceholder(_ ctx: CGContext, rect: CGRect, canvasH: CGFloat, number: Int) {
         let r = flip(rect, canvasH: canvasH)
         ctx.saveGState()

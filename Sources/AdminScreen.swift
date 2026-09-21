@@ -1076,6 +1076,26 @@ private struct LayoutCard: View {
             Divider().opacity(0.4)
 
             CopiesPicker(c: c)
+
+            Divider().overlay(Palette.hairline)
+
+            if let t = c.activeTemplate {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.on.square.dashed")
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(t.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text(c.activeEvent?.templateID == t.id
+                             ? "This event's own layout" : "Booth default layout")
+                            .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    }
+                    Spacer(minLength: 8)
+                }
+            }
+
+            Button(c.activeTemplate == nil ? "Design a layout…" : "Edit layout…") {
+                c.openPrintEditor?()
+            }
+            .buttonStyle(QuietButtonStyle())
             Toggle("Print automatically when a session finishes", isOn: Binding(
                 get: { c.settingsService.settings.autoPrint },
                 set: { c.settingsService.settings.autoPrint = $0 }))

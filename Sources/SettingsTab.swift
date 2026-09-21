@@ -302,7 +302,7 @@ private struct BrandingCard: View {
     }
 }
 
-private struct HexColorField: View {
+struct HexColorField: View {
     @Binding var hex: String
 
     var body: some View {

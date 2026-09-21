@@ -21,15 +21,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var adminWindow: NSWindow!
     private var boothWindow: NSWindow?
+    private var editorWindow: NSWindow?
     private var controller: BoothController!
 
-    private enum WindowRole: String { case admin, booth }
+    private enum WindowRole: String { case admin, booth, editor }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = BoothController()
         controller.openBoothWindow  = { [weak self] fs in self?.openBooth(fullScreen: fs) }
         controller.closeBoothWindow = { [weak self] in self?.closeBooth() }
         controller.focusAdminWindow = { [weak self] in self?.focusAdmin() }
+        controller.openPrintEditor = { [weak self] in self?.openEditor() }
 
         buildAdminWindow()
         buildMenu()
@@ -74,6 +76,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         adminWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         controller.noteAdminWindow(visible: true)
+    }
+
+    // MARK: - Print editor
+
+    /// Its own window, not another Admin tab. Laying out a sheet happens once
+    /// before an event rather than between groups, and it wants the room.
+    private func openEditor() {
+        if let existing = editorWindow {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let screen = adminWindow.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        let w = NSWindow(
+            contentRect: NSRect(origin: .zero,
+                                size: screen.fitting(NSSize(width: 1180, height: 820), margin: 20)),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        w.title = "Print Layout"
+        w.identifier = NSUserInterfaceItemIdentifier(WindowRole.editor.rawValue)
+        w.minSize = screen.fitting(NSSize(width: 900, height: 600))
+        w.delegate = self
+        w.isReleasedWhenClosed = false
+        w.collectionBehavior.insert(.fullScreenPrimary)
+        w.contentView = FirstMouseHostingView(
+            rootView: PrintEditorView(c: controller, store: controller.templates))
+        w.center()
+        editorWindow = w
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Booth window
@@ -163,6 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             controller.noteBoothWindow(open: false)
         case .admin:
             controller.noteAdminWindow(visible: false)
+        case .editor:
+            editorWindow = nil
         case nil:
             break
         }
@@ -291,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let windowMenu = NSMenu(title: "Window")
         add(windowMenu, "Admin Console", #selector(showAdmin), "1", [.command])
         add(windowMenu, "Booth Window", #selector(showBooth), "2", [.command])
+        add(windowMenu, "Print Layout Editor", #selector(showEditor), "3", [.command])
         windowMenu.addItem(.separator())
         add(windowMenu, "Toggle Booth Window", #selector(toggleBoothMenu), "b", [.command])
         add(windowMenu, "Close Booth Window", #selector(closeBoothMenu), "w", [.command, .shift])
@@ -330,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func idle()           { controller.returnToIdle() }
     @objc private func showAdmin()      { focusAdmin() }
     @objc private func showBooth()      { openBooth(fullScreen: controller.settings.fullScreenOnLaunch) }
+    @objc private func showEditor()     { openEditor() }
     @objc private func toggleBoothMenu(){ toggleBooth() }
     @objc private func closeBoothMenu() { closeBooth() }
     @objc private func testPrint()      { controller.testPrint() }

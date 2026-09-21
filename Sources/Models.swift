@@ -52,6 +52,11 @@ struct EventRecord: Codable, Identifiable, Hashable {
     var coverSessionID: String?
     /// Set once the gallery site has an album for this event.
     var publishedSlug: String?
+    /// The print layout this client gets. Empty means the booth's own setting,
+    /// so a booking only carries one when somebody deliberately gave it one —
+    /// which is what lets a wedding and the corporate night after it print
+    /// completely different sheets without anything being switched over between.
+    var templateID: String = ""
     /// Password for this event's album page. Kept on the Mac only — the page
     /// itself never contains it, just what it unlocks.
     var albumPassword: String = ""

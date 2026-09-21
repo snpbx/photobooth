@@ -109,9 +109,26 @@ final class BoothController: ObservableObject {
     let templates = TemplateStore()
 
     /// The template every sheet is composed against, or nil for the built-in
-    /// layouts. Resolved each time rather than cached: deleting a template while
-    /// it is selected should fall back, not fail.
-    var activeTemplate: PrintTemplate? { templates.template(settings.activeTemplateID) }
+    /// layouts.
+    ///
+    /// The event wins, then the booth's default. Resolved each time rather than
+    /// cached, so deleting a template while it is in use falls back to the
+    /// layouts instead of failing — a booth that prints the wrong arrangement is
+    /// recoverable, one that prints nothing is not.
+    var activeTemplate: PrintTemplate? {
+        if let e = activeEvent, let t = templates.template(e.templateID) { return t }
+        return templates.template(settings.activeTemplateID)
+    }
+
+    /// Attaches a layout to one booking, or clears it with an empty id.
+    func setTemplate(_ id: String, forEvent eventID: String) {
+        guard var e = storage.event(eventID) else { return }
+        e.templateID = id
+        storage.persist(event: e)
+        objectWillChange.send()
+        log.info(id.isEmpty ? "Cleared the print layout for \(e.name)"
+                            : "Print layout \(templates.template(id)?.name ?? id) set for \(e.name)")
+    }
 
     /// Photographs a session needs — the template's, when one is in use.
     var templateShotCount: Int? {
@@ -476,6 +493,7 @@ final class BoothController: ObservableObject {
     var openBoothWindow: ((Bool) -> Void)?     // Bool = also enter full screen
     var closeBoothWindow: (() -> Void)?
     var focusAdminWindow: (() -> Void)?
+    var openPrintEditor: (() -> Void)?
 
     func noteBoothWindow(open: Bool) {
         guard boothWindowOpen != open else { return }

@@ -16,9 +16,15 @@ the guest screen marks what the print will keep, dims what it will trim and rule
 it in thirds, so nobody finds themselves cropped out of the 4×6.
 
 **Print** — borderless 4×6 on a Canon SELPHY CP1500 through the macOS print
-system. Three layouts, 1–10 copies, margins and gutters that reflow the sheet as
-they change, and an optional **client logo** in the footer in place of the event
-name. A QR code on the print or the finish screen hands guests their photographs.
+system. Three built-in layouts, 1–10 copies, margins and gutters that reflow the
+sheet as they change, and an optional **client logo** in the footer. A QR code on
+the print or the finish screen hands guests their photographs.
+
+**Print layout editor** — a window of its own for arranging a sheet: drag
+photograph slots where you want them, lay logos and stickers over or behind the
+photographs, frame the lot with a border, and put the guest code where it suits.
+**A layout belongs to an event**, so a wedding and the corporate night after it
+print completely different sheets with nothing switched over between them.
 
 **Events** — every session belongs to one client booking, so a night's
 photographs stay segregated on disk rather than piling into one folder. Sessions
@@ -91,6 +97,8 @@ Sources/
   PrinterService.swift    CUPS discovery, status polling, job submission
   PhotoStorageService.swift  session tree, crash recovery, disk preflight
   LayoutRenderer.swift    4×6 geometry and drawing, EXIF orientation, mirroring
+  PrintTemplate.swift     operator-arranged sheets, and their store
+  PrintEditor.swift       the layout editor window
   BrandingAssets.swift    footer artwork imported through Admin
   GIFRenderer.swift       the session's photographs as one looping GIF
   UploadService.swift     disk-backed upload queue for the gallery site
@@ -379,6 +387,40 @@ sits in. Those differ whenever the camera's shape differs from the screen's, so
 measuring against the container would put the guide out by the width of the
 letterbox. The console draws the same guide plainly — no scrim, no thirds — since
 it is there to check the crop, not to frame anyone.
+
+## The print layout editor
+
+The three built-in layouts compute their slots from the margin and gutter
+settings, which keeps them tidy and makes them impossible to rearrange. A
+template throws that away — every rectangle on the sheet is the operator's to
+place. Open it from **Print Layout › Design a layout…** on the Control tab, or
+⌘3.
+
+What a template holds: photograph slots (several may show the *same* photograph,
+which is how a strip gets printed twice), overlay images for logos and stickers
+that sit either over or behind the photographs, a border, a background, and an
+optional box for the guest QR code.
+
+Every rectangle is stored as a **fraction of the canvas** rather than in inches
+or pixels. Inches would have to be re-derived whenever the sheet changed;
+fractions never do, so one template renders identically at 200, 300 or 600 DPI.
+Templates live as one JSON file beside the settings — a few kilobytes, written
+atomically, so a power cut mid-event cannot leave half a library behind.
+
+Which layout a sheet uses is resolved fresh each time: **the event's own, then
+the booth default, then the built-in layouts**. Deleting a template while it is
+in use falls back rather than failing — a booth printing the wrong arrangement is
+recoverable, one printing nothing is not.
+
+Two things the editor does deliberately:
+
+- **The canvas is an approximation; the proof is not.** Dragging redraws on every
+  frame, so the canvas is plain SwiftUI shapes. **Proof sheet** renders the
+  genuine article through `LayoutRenderer.composite`, the same call the printer
+  gets, with numbered stand-ins for the photographs.
+- **Draw order is the grammar.** Background, overlays marked as sitting behind,
+  photographs, the remaining overlays, border, code. That is what makes a sticker
+  a sticker and a backdrop a backdrop.
 
 ## Reliability notes
 
