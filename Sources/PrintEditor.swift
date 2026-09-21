@@ -13,6 +13,35 @@ import UniformTypeIdentifiers
 /// it redraws on every frame of a drag. **Proof sheet** renders the genuine
 /// article through `LayoutRenderer`, which is the only thing that can be trusted
 /// about what comes out of the printer.
+/// What a measurement is shown in. The sheet is always stored as fractions;
+/// this only decides how those fractions are written down and nudged.
+enum PlacementUnit: String, CaseIterable, Identifiable {
+    case percent = "%"
+    case pixels = "px"
+    case inches = "in"
+
+    var id: String { rawValue }
+
+    var decimals: Int {
+        switch self {
+        case .percent: return 1
+        case .pixels:  return 0
+        case .inches:  return 2
+        }
+    }
+
+    /// A nudge worth making in this unit: a percent, ten pixels, a twentieth of
+    /// an inch. One pixel at 300 DPI is a third of a millimetre — a step nobody
+    /// would notice and everybody would have to press forty times.
+    func step(_ axis: Axis, settings: AppSettings) -> Double {
+        switch self {
+        case .percent: return 1
+        case .pixels:  return 10
+        case .inches:  return 0.05
+        }
+    }
+}
+
 struct PrintEditorView: View {
     @ObservedObject var c: BoothController
     @ObservedObject var store: TemplateStore
@@ -22,6 +51,7 @@ struct PrintEditorView: View {
     @State private var dragOrigin: NormRect?
     @State private var proof: NSImage?
     @State private var dirty = false
+    @State private var unit: PlacementUnit = .percent
 
     /// - Parameter templateID: which layout to open. Nil starts a new one seeded
     ///   from the selected built-in, so the editor never opens on a blank sheet.
@@ -41,7 +71,7 @@ struct PrintEditorView: View {
                 canvasPane
                 Rectangle().fill(Palette.hairline).frame(width: 1)
                 inspector
-                    .frame(width: 330)
+                    .frame(width: 376)
             }
         }
         .background(Palette.canvas)
@@ -51,6 +81,9 @@ struct PrintEditorView: View {
         .modifier(TouchToggleStyling(enabled: c.settings.touchControls))
         .tint(Palette.ink)
         .foregroundStyle(Palette.ink)
+        // Opens with something selected, so the placement controls are visible
+        // rather than waiting behind a tap nobody knows to make.
+        .onAppear { if selection == nil { selection = draft.slots.first?.id } }
     }
 
     // MARK: - Header
@@ -426,23 +459,87 @@ struct PrintEditorView: View {
 
     /// Exact placement, for when a drag is not precise enough — or not possible.
     private func rectControls(_ id: String) -> some View {
-        let binding: (WritableKeyPath<NormRect, Double>) -> Binding<Double> = { key in
-            Binding(
-                get: { self.rect(of: id)?[keyPath: key] ?? 0 },
-                set: { v in
-                    guard var r = self.rect(of: id) else { return }
-                    r[keyPath: key] = v
-                    r.clamp()
-                    self.setRect(r, of: id)
-                    self.dirty = true
-                })
+        Group {
+            LabeledRow(label: "Measure in",
+                       help: "Everything is stored as a fraction of the sheet whichever unit is shown, so a layout keeps its proportions at any DPI or paper size.") {
+                Picker("", selection: $unit) {
+                    ForEach(PlacementUnit.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 150)
+            }
+
+            placementRow("Across", id: id, key: \.x, axis: .horizontal)
+            placementRow("Down",   id: id, key: \.y, axis: .vertical)
+            placementRow("Width",  id: id, key: \.w, axis: .horizontal)
+            placementRow("Height", id: id, key: \.h, axis: .vertical)
+
+            LabeledRow(label: "Centre") {
+                HStack(spacing: 8) {
+                    Button("Across") { centre(id, horizontally: true) }
+                        .buttonStyle(QuietButtonStyle())
+                    Button("Down") { centre(id, horizontally: false) }
+                        .buttonStyle(QuietButtonStyle())
+                }
+            }
         }
-        return Group {
-            percentRow("Across", binding(\.x), range: 0...1)
-            percentRow("Down", binding(\.y), range: 0...1)
-            percentRow("Width", binding(\.w), range: 0.04...1)
-            percentRow("Height", binding(\.h), range: 0.04...1)
+    }
+
+    /// One measurement, typed or nudged, in whichever unit is showing.
+    ///
+    /// The field edits a real number rather than a slider position, because
+    /// "37%" and "440 px" are the kinds of things somebody matching one slot to
+    /// another actually knows, and a slider cannot be told them.
+    private func placementRow(_ label: String, id: String,
+                              key: WritableKeyPath<NormRect, Double>,
+                              axis: Axis) -> some View {
+        let span = self.span(axis)
+        let bound = Binding<Double>(
+            get: { (self.rect(of: id)?[keyPath: key] ?? 0) * span },
+            set: { v in
+                guard var r = self.rect(of: id) else { return }
+                r[keyPath: key] = span > 0 ? v / span : 0
+                r.clamp()
+                self.setRect(r, of: id)
+                self.dirty = true
+            })
+
+        return LabeledRow(label: label) {
+            HStack(spacing: 6) {
+                TextField("", value: bound, format: .number.precision(.fractionLength(0...unit.decimals)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 70)
+                    .multilineTextAlignment(.trailing)
+                Text(unit.rawValue)
+                    .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                    .frame(width: 20, alignment: .leading)
+                StepPad(symbol: "minus", side: 40) {
+                    bound.wrappedValue -= unit.step(axis, settings: c.settings)
+                }
+                StepPad(symbol: "plus", side: 40) {
+                    bound.wrappedValue += unit.step(axis, settings: c.settings)
+                }
+            }
         }
+    }
+
+    /// How much of the sheet one unit covers on this axis.
+    private func span(_ axis: Axis) -> Double {
+        switch unit {
+        case .percent: return 100
+        case .pixels:  return axis == .horizontal
+                            ? Double(c.settings.pixelSize.width) : Double(c.settings.pixelSize.height)
+        case .inches:  return axis == .horizontal ? 4 : 6
+        }
+    }
+
+    private func centre(_ id: String, horizontally: Bool) {
+        guard var r = rect(of: id) else { return }
+        if horizontally { r.x = (1 - r.w) / 2 } else { r.y = (1 - r.h) / 2 }
+        r.clamp()
+        setRect(r, of: id)
+        dirty = true
     }
 
     @ViewBuilder

@@ -421,6 +421,15 @@ the booth default, then the built-in layouts**. Deleting a template while it is
 in use falls back rather than failing — a booth printing the wrong arrangement is
 recoverable, one printing nothing is not.
 
+Placement can be dragged, listed or typed. Anything selected carries **Across,
+Down, Width and Height** as numbers, shown in **percent, pixels or inches** —
+"37%", "440 px" and "1.6 in" are the kinds of thing somebody matching one slot to
+another actually knows, and a slider cannot be told them. The values are only a
+way of writing down the same stored fractions, so switching units changes nothing
+about the sheet. Nudges are a percent, ten pixels or a twentieth of an inch; one
+pixel at 300 DPI is a third of a millimetre, which nobody would see and everybody
+would have to press forty times.
+
 Two things the editor does deliberately:
 
 - **The canvas is an approximation; the proof is not.** Dragging redraws on every

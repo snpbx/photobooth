@@ -1043,8 +1043,9 @@ struct DoubleStepper: View {
 
 /// One square of a touch stepper. 44 × 44, which is the smallest target a
 /// fingertip hits reliably — about 8.5mm on an iPad at 2×.
-private struct StepPad: View {
+struct StepPad: View {
     let symbol: String
+    var side: CGFloat = 52
     let action: () -> Void
     @Environment(\.isEnabled) private var isEnabled
 
@@ -1052,7 +1053,7 @@ private struct StepPad: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .bold))
-                .frame(width: 52, height: 52)
+                .frame(width: side, height: side)
                 .background(Color.white.opacity(0.06))
                 .foregroundStyle(isEnabled ? Palette.text : Palette.textDim.opacity(0.5))
                 .contentShape(Rectangle())
