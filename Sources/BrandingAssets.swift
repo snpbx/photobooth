@@ -82,6 +82,22 @@ enum BrandingAssets {
         return name
     }
 
+    /// Decoded once and kept. A template can carry a dozen stickers and the
+    /// sheet is redrawn on every editor keystroke; decoding each PNG each time
+    /// would make the editor feel like treacle.
+    private static let cache = NSCache<NSString, CGImageBox>()
+    private final class CGImageBox { let image: CGImage; init(_ i: CGImage) { image = i } }
+
+    static func loadCGImage(_ fileName: String) -> CGImage? {
+        if let hit = cache.object(forKey: fileName as NSString) { return hit.image }
+        guard let u = url(for: fileName),
+              let src = CGImageSourceCreateWithURL(u as CFURL, nil),
+              let img = CGImageSourceCreateImageAtIndex(src, 0, nil)
+        else { return nil }
+        cache.setObject(CGImageBox(img), forKey: fileName as NSString)
+        return img
+    }
+
     static func remove(_ fileName: String) {
         guard let u = url(for: fileName) else { return }
         try? FileManager.default.removeItem(at: u)

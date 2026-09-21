@@ -438,7 +438,8 @@ private struct CameraCard: View {
                     FramingGuide(imageAspect: (live.frame?.size.width ?? 4)
                                             / max(1, live.frame?.size.height ?? 3),
                                  cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
-                                                                      settings: c.settings),
+                                                                      settings: c.settings,
+                                                                      template: c.activeTemplate),
                                  cropMode: c.settings.cropMode,
                                  tint: Color(hex: c.settings.accentHex),
                                  dims: false, thirds: false)

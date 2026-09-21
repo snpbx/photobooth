@@ -394,6 +394,10 @@ struct AppSettings: Codable, Equatable {
     // Print
     var printerName: String = ""
     var layout: PrintLayout = .duplicateStrips
+    /// A template made in the print editor. When set and still present, it
+    /// replaces `layout` for every sheet — the built-in layouts stay untouched
+    /// underneath, so clearing this returns the booth to them.
+    var activeTemplateID: String = ""
     var copies: Int = 1
     var autoPrint: Bool = true
     var borderless: Bool = true

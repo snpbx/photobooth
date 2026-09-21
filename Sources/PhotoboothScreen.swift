@@ -23,7 +23,8 @@ struct PhotoboothScreen: View {
                 if c.settings.framingGuide, showsFramingGuide, let frame = live.frame {
                     FramingGuide(imageAspect: frame.size.width / max(1, frame.size.height),
                                  cellAspect: LayoutRenderer.cellAspect(for: c.settings.layout,
-                                                                      settings: c.settings),
+                                                                      settings: c.settings,
+                                                                      template: c.activeTemplate),
                                  cropMode: c.settings.cropMode,
                                  tint: Color(hex: c.settings.accentHex),
                                  lineWidth: max(1, m.pt(0.25)))

@@ -106,6 +106,18 @@ final class BoothController: ObservableObject {
     // MARK: Services
 
     let settingsService: SettingsService
+    let templates = TemplateStore()
+
+    /// The template every sheet is composed against, or nil for the built-in
+    /// layouts. Resolved each time rather than cached: deleting a template while
+    /// it is selected should fall back, not fail.
+    var activeTemplate: PrintTemplate? { templates.template(settings.activeTemplateID) }
+
+    /// Photographs a session needs — the template's, when one is in use.
+    var templateShotCount: Int? {
+        guard let t = activeTemplate, !t.slots.isEmpty else { return nil }
+        return max(1, t.photoCount)
+    }
     let storage: PhotoStorageService
     let printer: PrinterService
     let uploader: UploadService
@@ -742,11 +754,13 @@ final class BoothController: ObservableObject {
         let layout = session.layout
         let snapshot = settings
         let payload = printQRPayload(for: session)
+        let sheet = activeTemplate
 
         let result: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
             do {
                 return .success(try LayoutRenderer.renderPrint(photos: urls, layout: layout,
-                                                               settings: snapshot, qrPayload: payload))
+                                                               settings: snapshot, qrPayload: payload,
+                                                               template: sheet))
             } catch { return .failure(error) }
         }.value
 
@@ -947,7 +961,12 @@ final class BoothController: ObservableObject {
     // guests usually notice somebody blinked.
 
     /// The number of shots this session is meant to end up with.
-    var shotCount: Int { (currentSession?.layout ?? settings.layout).photoCount }
+    var shotCount: Int {
+        // A template decides how many photographs a session needs; without one
+        // the chosen layout does, as before.
+        if currentSession == nil, let n = templateShotCount { return n }
+        return (currentSession?.layout ?? settings.layout).photoCount
+    }
 
     /// True when clicking a number would do something useful right now.
     var canRetake: Bool {
@@ -1108,11 +1127,13 @@ final class BoothController: ObservableObject {
         let layout = rec.layout
         let snapshot = settings
         let payload = printQRPayload(for: rec)
+        let sheet = activeTemplate
         Task { @MainActor in
             let result: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
                 do {
                     return .success(try LayoutRenderer.renderPrint(photos: urls, layout: layout,
-                                                                   settings: snapshot, qrPayload: payload))
+                                                                   settings: snapshot, qrPayload: payload,
+                                                                   template: sheet))
                 } catch { return .failure(error) }
             }.value
             switch result {

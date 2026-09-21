@@ -149,8 +149,15 @@ enum LayoutRenderer {
 
     /// Aspect ratio of the first slot — drives the guest framing guide so people
     /// are not surprised by what the print crops away.
-    static func cellAspect(for layout: PrintLayout, settings: AppSettings) -> CGFloat {
+    static func cellAspect(for layout: PrintLayout, settings: AppSettings,
+                           template: PrintTemplate? = nil) -> CGFloat {
         let canvas = settings.pixelSize
+        // A template's own first slot, so the guide on the guest screen keeps
+        // telling the truth once the operator has rearranged the sheet.
+        if let t = template, let first = t.slots.first {
+            let r = first.rect.rect(in: canvas)
+            return r.height > 0 ? r.width / r.height : 1.5
+        }
         guard let first = slots(for: layout, canvas: canvas, settings: settings).first else { return 1.5 }
         return first.rect.width / first.rect.height
     }
@@ -161,13 +168,20 @@ enum LayoutRenderer {
     static func renderPrint(photos: [URL],
                             layout: PrintLayout,
                             settings: AppSettings,
-                            qrPayload: String? = nil) throws -> Data {
+                            qrPayload: String? = nil,
+                            template: PrintTemplate? = nil) throws -> Data {
         guard !photos.isEmpty else { throw RenderError.noPhotos }
         let canvas = settings.pixelSize
         let images = photos.map { loadOrientedImage(at: $0) }
 
-        let cg = try composite(images: images, layout: layout, canvas: canvas,
+        let cg: CGImage
+        if let template, !template.slots.isEmpty {
+            cg = try composite(images: images, template: template, canvas: canvas,
                                settings: settings, qrPayload: qrPayload)
+        } else {
+            cg = try composite(images: images, layout: layout, canvas: canvas,
+                               settings: settings, qrPayload: qrPayload)
+        }
         guard let data = jpegData(from: cg, dpi: settings.dpi) else { throw RenderError.encodeFailed }
         return data
     }
@@ -199,6 +213,90 @@ enum LayoutRenderer {
                 for region in footerRegions(for: layout, canvas: canvas, settings: settings) {
                     drawFooter(ctx, canvas: canvas, region: region,
                                settings: settings, qrPayload: qrPayload)
+                }
+            }
+        }
+    }
+
+    /// Composes a sheet the operator arranged themselves.
+    ///
+    /// Shares every primitive with the built-in path — the same photo draw, the
+    /// same crop rule, the same rounded clip — so a template and a layout cannot
+    /// disagree about how a photograph meets its slot.
+    ///
+    /// Order is the whole grammar here: background, any overlay marked as
+    /// sitting behind, the photographs, then the rest of the overlays, then the
+    /// border, then the code. That is what makes a sticker a sticker and a
+    /// backdrop a backdrop.
+    static func composite(images: [CGImage?],
+                          template: PrintTemplate,
+                          canvas: CGSize,
+                          settings: AppSettings,
+                          qrPayload: String? = nil,
+                          overlayImage: (String) -> CGImage? = { BrandingAssets.loadCGImage($0) }) throws -> CGImage {
+        var s = settings
+        s.backgroundHex = template.backgroundHex
+
+        return try draw(canvas: canvas, settings: s) { ctx in
+            func drawOverlays(behind: Bool) {
+                for o in template.overlays where o.behindPhotos == behind {
+                    guard !o.file.isEmpty, let img = overlayImage(o.file) else { continue }
+                    let r = flip(o.rect.rect(in: canvas), canvasH: canvas.height)
+                    ctx.saveGState()
+                    ctx.setAlpha(max(0, min(o.opacity, 1)))
+                    ctx.interpolationQuality = .high
+                    // Aspect-fit: a logo squashed to fill its box is worse than a
+                    // logo with air around it, and the operator sized the box.
+                    let iw = CGFloat(img.width), ih = CGFloat(img.height)
+                    if iw > 0, ih > 0 {
+                        let scale = min(r.width / iw, r.height / ih)
+                        let w = iw * scale, h = ih * scale
+                        ctx.draw(img, in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
+                    }
+                    ctx.restoreGState()
+                }
+            }
+
+            drawOverlays(behind: true)
+
+            for slot in template.slots {
+                let rect = slot.rect.rect(in: canvas)
+                let radius = slot.cornerRadius * min(rect.width, rect.height)
+                guard slot.photoIndex < images.count, let img = images[slot.photoIndex] else {
+                    drawPlaceholder(ctx, rect: rect, canvasH: canvas.height, number: slot.photoIndex + 1)
+                    continue
+                }
+                drawPhoto(ctx, image: img, in: rect, canvasH: canvas.height,
+                          mode: slot.cropMode, radius: radius)
+            }
+
+            drawOverlays(behind: false)
+
+            if template.border.enabled {
+                let b = template.border
+                let inset = b.inset * canvas.width
+                let line = max(1, b.width * canvas.width)
+                let r = CGRect(origin: .zero, size: canvas)
+                    .insetBy(dx: inset + line / 2, dy: inset + line / 2)
+                ctx.saveGState()
+                ctx.setStrokeColor(cgColor(b.colorHex))
+                ctx.setLineWidth(line)
+                ctx.addPath(roundedPath(r, radius: b.cornerRadius * canvas.width))
+                ctx.strokePath()
+                ctx.restoreGState()
+            }
+
+            if let payload = qrPayload, !payload.isEmpty, let box = template.qr {
+                let r = flip(box.rect(in: canvas), canvasH: canvas.height)
+                let side = min(r.width, r.height)
+                let square = CGRect(x: r.midX - side / 2, y: r.midY - side / 2, width: side, height: side)
+                if let qr = QRCode.cgImage(for: payload, minimumSide: side * 2) {
+                    ctx.saveGState()
+                    ctx.interpolationQuality = .none   // never smooth a QR code
+                    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+                    ctx.fill(square.insetBy(dx: -side * 0.04, dy: -side * 0.04))
+                    ctx.draw(qr, in: square)
+                    ctx.restoreGState()
                 }
             }
         }
@@ -307,10 +405,11 @@ enum LayoutRenderer {
                                   image: CGImage,
                                   in topLeftRect: CGRect,
                                   canvasH: CGFloat,
-                                  mode: CropMode) {
+                                  mode: CropMode,
+                                  radius: CGFloat? = nil) {
         let rect = flip(topLeftRect, canvasH: canvasH)
         ctx.saveGState()
-        ctx.addPath(roundedPath(rect, radius: cornerRadius))
+        ctx.addPath(roundedPath(rect, radius: radius ?? cornerRadius))
         ctx.clip()
 
         let iw = CGFloat(image.width), ih = CGFloat(image.height)
