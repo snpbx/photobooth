@@ -277,6 +277,8 @@ struct PrintEditorView: View {
                     .buttonStyle(QuietButtonStyle())
                 }
 
+                photosCard
+
                 if let id = selection { selectedCard(id) }
 
                 SectionCard(title: "Sheet") {
@@ -355,10 +357,91 @@ struct PrintEditorView: View {
         .background(Palette.surfaceAlt)
     }
 
+    /// Every photograph on the sheet, as a list.
+    ///
+    /// The canvas is the quick way to work and a list is the certain one: it can
+    /// select, reorder and remove a slot that is behind something else, off the
+    /// edge, or too small to hit — none of which a drag can reach.
+    private var photosCard: some View {
+        SectionCard(title: "Photos on the sheet") {
+            if draft.slots.isEmpty {
+                Text("No photographs placed yet. Add one, or open a layout to start from.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(Array(draft.slots.enumerated()), id: \.element.id) { pair in
+                let i = pair.offset
+                let slot = pair.element
+                HStack(spacing: 8) {
+                    Button {
+                        selection = slot.id
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("\(slot.photoIndex + 1)")
+                                .font(VHS.mono(13, .bold))
+                                .frame(width: 30, height: 30)
+                                .background(selection == slot.id ? Palette.ink : Palette.canvas,
+                                            in: RoundedRectangle(cornerRadius: 7))
+                                .foregroundStyle(selection == slot.id ? Palette.paper : Palette.ink)
+                            Text(String(format: "%.0f%% × %.0f%%  at  %.0f, %.0f",
+                                        slot.rect.w * 100, slot.rect.h * 100,
+                                        slot.rect.x * 100, slot.rect.y * 100))
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.midGray)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        if selection == slot.id { selection = nil }
+                        draft.slots.remove(at: i)
+                        dirty = true
+                    } label: {
+                        Image(systemName: "minus.circle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Palette.ember)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove this photograph from the sheet")
+                }
+            }
+
+            Button("Add photo slot") { addSlot() }
+                .buttonStyle(QuietButtonStyle())
+        }
+    }
+
+    /// Exact placement, for when a drag is not precise enough — or not possible.
+    private func rectControls(_ id: String) -> some View {
+        let binding: (WritableKeyPath<NormRect, Double>) -> Binding<Double> = { key in
+            Binding(
+                get: { self.rect(of: id)?[keyPath: key] ?? 0 },
+                set: { v in
+                    guard var r = self.rect(of: id) else { return }
+                    r[keyPath: key] = v
+                    r.clamp()
+                    self.setRect(r, of: id)
+                    self.dirty = true
+                })
+        }
+        return Group {
+            percentRow("Across", binding(\.x), range: 0...1)
+            percentRow("Down", binding(\.y), range: 0...1)
+            percentRow("Width", binding(\.w), range: 0.04...1)
+            percentRow("Height", binding(\.h), range: 0.04...1)
+        }
+    }
+
     @ViewBuilder
     private func selectedCard(_ id: String) -> some View {
         if let i = draft.slots.firstIndex(where: { $0.id == id }) {
             SectionCard(title: "Photo slot") {
+                rectControls(id)
                 LabeledRow(label: "Shows photo", help: "Two slots may show the same photograph — that is how a strip gets printed twice.") {
                     IntStepper(value: Binding(
                         get: { draft.slots[i].photoIndex + 1 },
@@ -393,6 +476,7 @@ struct PrintEditorView: View {
             }
         } else if let i = draft.overlays.firstIndex(where: { $0.id == id }) {
             SectionCard(title: "Image") {
+                rectControls(id)
                 percentRow("Opacity", Binding(
                     get: { draft.overlays[i].opacity },
                     set: { draft.overlays[i].opacity = $0; dirty = true }), range: 0.05...1)
@@ -418,6 +502,7 @@ struct PrintEditorView: View {
             }
         } else if id == "qr" {
             SectionCard(title: "QR code") {
+                rectControls(id)
                 Text("Drag to place the guest code. It is drawn square inside whatever box you give it.")
                     .font(.system(size: 11)).foregroundStyle(Palette.midGray)
                     .fixedSize(horizontal: false, vertical: true)
