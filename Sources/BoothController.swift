@@ -120,6 +120,36 @@ final class BoothController: ObservableObject {
         return templates.template(settings.activeTemplateID)
     }
 
+    /// Chooses a saved layout at whichever level applies: the booking being shot
+    /// if there is one, otherwise the booth's own default.
+    func useTemplate(_ id: String) {
+        if let e = activeEvent {
+            setTemplate(id, forEvent: e.id)
+        } else {
+            settingsService.settings.activeTemplateID = id
+        }
+    }
+
+    /// Goes back to one of the three built-in arrangements. Clears the template
+    /// at both levels, because leaving one attached to the event would quietly
+    /// override the choice just made.
+    func useBuiltInLayout(_ layout: PrintLayout) {
+        settingsService.settings.layout = layout
+        settingsService.settings.activeTemplateID = ""
+        if let e = activeEvent, !e.templateID.isEmpty { setTemplate("", forEvent: e.id) }
+    }
+
+    /// Removes a layout and detaches it from anything still pointing at it, so
+    /// no booking is left referring to a template that is gone.
+    func deleteTemplate(_ id: String) {
+        let name = templates.template(id)?.name ?? id
+        templates.delete(id)
+        if settings.activeTemplateID == id { settingsService.settings.activeTemplateID = "" }
+        for e in storage.events where e.templateID == id { setTemplate("", forEvent: e.id) }
+        objectWillChange.send()
+        log.info("Deleted print layout \(name)")
+    }
+
     /// Attaches a layout to one booking, or clears it with an empty id.
     func setTemplate(_ id: String, forEvent eventID: String) {
         guard var e = storage.event(eventID) else { return }
@@ -493,7 +523,8 @@ final class BoothController: ObservableObject {
     var openBoothWindow: ((Bool) -> Void)?     // Bool = also enter full screen
     var closeBoothWindow: (() -> Void)?
     var focusAdminWindow: (() -> Void)?
-    var openPrintEditor: (() -> Void)?
+    /// Opens the editor, on a named template or on a fresh one when nil.
+    var openPrintEditor: ((String?) -> Void)?
 
     func noteBoothWindow(open: Bool) {
         guard boothWindowOpen != open else { return }

@@ -23,11 +23,13 @@ struct PrintEditorView: View {
     @State private var proof: NSImage?
     @State private var dirty = false
 
-    init(c: BoothController, store: TemplateStore) {
+    /// - Parameter templateID: which layout to open. Nil starts a new one seeded
+    ///   from the selected built-in, so the editor never opens on a blank sheet.
+    init(c: BoothController, store: TemplateStore, templateID: String? = nil) {
         self.c = c
         self.store = store
-        let existing = c.activeTemplate
-        _draft = State(initialValue: existing
+        let chosen = templateID.flatMap { store.template($0) }
+        _draft = State(initialValue: chosen
                        ?? TemplateStore.seeded(from: c.settings.layout, settings: c.settings))
     }
 
@@ -89,10 +91,16 @@ struct PrintEditorView: View {
             }
             Button("Proof sheet") { makeProof() }
                 .buttonStyle(QuietButtonStyle())
+                .frame(width: 120)
+            // Keeps the original and adds a variant, which is the usual way a
+            // second layout comes about: someone opens the one that works and
+            // changes two things about it.
+            Button("Save as new") { saveAsNew() }
+                .buttonStyle(QuietButtonStyle())
                 .frame(width: 130)
             Button("Save") { save() }
                 .buttonStyle(PrimaryButtonStyle())
-                .frame(width: 120)
+                .frame(width: 110)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
@@ -598,6 +606,15 @@ struct PrintEditorView: View {
 
     private func save() {
         store.save(draft)
+        dirty = false
+    }
+
+    private func saveAsNew() {
+        var copy = draft
+        copy.id = UUID().uuidString
+        if store.template(draft.id) != nil { copy.name = "\(draft.name) copy" }
+        store.save(copy)
+        draft = copy
         dirty = false
     }
 

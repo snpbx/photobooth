@@ -1077,25 +1077,19 @@ private struct LayoutCard: View {
 
             CopiesPicker(c: c)
 
-            Divider().overlay(Palette.hairline)
-
-            if let t = c.activeTemplate {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.on.square.dashed")
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(t.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        Text(c.activeEvent?.templateID == t.id
-                             ? "This event's own layout" : "Booth default layout")
-                            .font(.system(size: 11)).foregroundStyle(Palette.textDim)
-                    }
-                    Spacer(minLength: 8)
+            if !c.templates.templates.isEmpty {
+                Divider().overlay(Palette.hairline)
+                OSDLabel(text: "Your layouts", size: 10, weight: .semibold,
+                         color: Palette.textDim, tracking: 0.22)
+                ForEach(c.templates.templates) { t in
+                    TemplateChoice(template: t, c: c)
                 }
             }
 
-            Button(c.activeTemplate == nil ? "Design a layout…" : "Edit layout…") {
-                c.openPrintEditor?()
-            }
-            .buttonStyle(QuietButtonStyle())
+            Divider().overlay(Palette.hairline)
+
+            Button("Design a new layout…") { c.openPrintEditor?(nil) }
+                .buttonStyle(QuietButtonStyle())
             Toggle("Print automatically when a session finishes", isOn: Binding(
                 get: { c.settingsService.settings.autoPrint },
                 set: { c.settingsService.settings.autoPrint = $0 }))
@@ -1121,6 +1115,98 @@ private struct LayoutCard: View {
 /// The value only ever runs 1–10, so there is nothing worth typing, and on a
 /// touch screen a text field means the on-screen keyboard covering the panel to
 /// enter a single digit. One tap sets it.
+/// One of the operator's own layouts, alongside the built-in three.
+///
+/// Carries its own edit and remove controls: a layout is a thing they made, and
+/// managing it belongs where it is chosen rather than behind another window.
+private struct TemplateChoice: View {
+    let template: PrintTemplate
+    @ObservedObject var c: BoothController
+    @Environment(\.touchControls) private var touch
+    @State private var confirmingDelete = false
+
+    var body: some View {
+        let selected = c.activeTemplate?.id == template.id
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                c.useTemplate(template.id)
+            } label: {
+                HStack(alignment: .center, spacing: touch ? 14 : 10) {
+                    miniature.frame(width: touch ? 72 : 52)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(template.name)
+                            .font(.system(size: touch ? 14 : 12, weight: .semibold))
+                            .lineLimit(1)
+                        Text(scope)
+                            .font(.system(size: touch ? 12 : 11))
+                            .foregroundStyle(Palette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: touch ? 22 : 17))
+                        .foregroundStyle(selected ? Palette.ink : Palette.hairline)
+                }
+                .padding(touch ? 18 : 9)
+                .frame(maxWidth: .infinity)
+                .background(selected ? Palette.ink.opacity(0.06) : Color.white.opacity(0.04),
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(selected ? Palette.ink : Palette.hairline, lineWidth: selected ? 2 : 1)
+                    .allowsHitTesting(false))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 8) {
+                Button("Edit") { c.openPrintEditor?(template.id) }
+                    .buttonStyle(QuietButtonStyle())
+                if confirmingDelete {
+                    Button("Really remove") {
+                        c.deleteTemplate(template.id)
+                        confirmingDelete = false
+                    }
+                    .buttonStyle(QuietButtonStyle(destructive: true))
+                    Button("Keep") { confirmingDelete = false }
+                        .buttonStyle(QuietButtonStyle())
+                } else {
+                    Button("Remove") { confirmingDelete = true }
+                        .buttonStyle(QuietButtonStyle(destructive: true))
+                }
+            }
+        }
+    }
+
+    private var scope: String {
+        let photos = "\(template.photoCount) photo(s)"
+        if c.activeEvent?.templateID == template.id { return "\(photos) · this event's layout" }
+        if c.settings.activeTemplateID == template.id { return "\(photos) · booth default" }
+        return photos
+    }
+
+    /// A sketch of the sheet from its own slots — enough to tell two layouts
+    /// apart at a glance, and far cheaper than rendering the real thing for
+    /// every tile on every redraw.
+    private var miniature: some View {
+        GeometryReader { geo in
+            let sheet = CGSize(width: geo.size.width, height: geo.size.width * 1.5)
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(Color(hex: template.backgroundHex))
+                ForEach(template.slots) { slot in
+                    let r = slot.rect.rect(in: sheet)
+                    Rectangle()
+                        .fill(Palette.textDim.opacity(0.35))
+                        .frame(width: r.width, height: r.height)
+                        .offset(x: r.minX, y: r.minY)
+                }
+            }
+            .frame(width: sheet.width, height: sheet.height)
+            .overlay(Rectangle().stroke(Palette.hairline, lineWidth: 1))
+        }
+        .aspectRatio(2.0 / 3.0, contentMode: .fit)
+    }
+}
+
 private struct CopiesPicker: View {
     @ObservedObject var c: BoothController
     @Environment(\.touchControls) private var touch
@@ -1183,11 +1269,12 @@ private struct LayoutChoice: View {
     @Environment(\.touchControls) private var touch
 
     var body: some View {
-        let selected = c.settings.layout == layout
+        // A saved layout in use overrides all three, so none of them is current.
+        let selected = c.activeTemplate == nil && c.settings.layout == layout
         let accent = Palette.ink
 
         Button {
-            c.settingsService.settings.layout = layout
+            c.useBuiltInLayout(layout)
         } label: {
             Group {
                 if showsSubtitle {

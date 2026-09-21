@@ -401,6 +401,15 @@ which is how a strip gets printed twice), overlay images for logos and stickers
 that sit either over or behind the photographs, a border, a background, and an
 optional box for the guest QR code.
 
+Saved layouts appear on the **Print Layout** card beside the three built-in ones,
+each with a sketch of its own slots, and are chosen the same way. Edit and Remove
+sit on the tile — a layout is a thing the operator made, so managing it belongs
+where it is chosen rather than behind another window. Removing one detaches it
+from anything still pointing at it, so no booking is left referring to a layout
+that has gone. **Save as new** keeps the original and adds a variant, which is
+how a second layout usually comes about: somebody opens the one that works and
+changes two things about it.
+
 Every rectangle is stored as a **fraction of the canvas** rather than in inches
 or pixels. Inches would have to be re-derived whenever the sheet changed;
 fractions never do, so one template renders identically at 200, 300 or 600 DPI.

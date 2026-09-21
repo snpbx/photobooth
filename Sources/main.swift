@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         controller.openBoothWindow  = { [weak self] fs in self?.openBooth(fullScreen: fs) }
         controller.closeBoothWindow = { [weak self] in self?.closeBooth() }
         controller.focusAdminWindow = { [weak self] in self?.focusAdmin() }
-        controller.openPrintEditor = { [weak self] in self?.openEditor() }
+        controller.openPrintEditor = { [weak self] id in self?.openEditor(templateID: id) }
 
         buildAdminWindow()
         buildMenu()
@@ -82,11 +82,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Its own window, not another Admin tab. Laying out a sheet happens once
     /// before an event rather than between groups, and it wants the room.
-    private func openEditor() {
-        if let existing = editorWindow {
+    private func openEditor(templateID: String? = nil) {
+        // Rebuilt rather than reused when a different layout is asked for: the
+        // draft lives in the view's own state, so the window has to be remade to
+        // open on something else.
+        if let existing = editorWindow, templateID == nil {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
+        }
+        if let existing = editorWindow {
+            existing.orderOut(nil)
+            existing.close()
+            editorWindow = nil
         }
         let screen = adminWindow.screen ?? NSScreen.main ?? NSScreen.screens[0]
         let w = NSWindow(
@@ -101,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.isReleasedWhenClosed = false
         w.collectionBehavior.insert(.fullScreenPrimary)
         w.contentView = FirstMouseHostingView(
-            rootView: PrintEditorView(c: controller, store: controller.templates))
+            rootView: PrintEditorView(c: controller, store: controller.templates,
+                                      templateID: templateID))
         w.center()
         editorWindow = w
         w.makeKeyAndOrderFront(nil)
@@ -365,7 +374,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func idle()           { controller.returnToIdle() }
     @objc private func showAdmin()      { focusAdmin() }
     @objc private func showBooth()      { openBooth(fullScreen: controller.settings.fullScreenOnLaunch) }
-    @objc private func showEditor()     { openEditor() }
+    @objc private func showEditor()     { openEditor(templateID: nil) }
     @objc private func toggleBoothMenu(){ toggleBooth() }
     @objc private func closeBoothMenu() { closeBooth() }
     @objc private func testPrint()      { controller.testPrint() }
