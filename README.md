@@ -7,6 +7,38 @@ independent windows.
 Built with Swift + SwiftUI. No Xcode project — `build.sh` drives `swiftc` and
 `clang` directly, and produces a self-contained `.app` and `.dmg`.
 
+## Features
+
+**Capture** — Canon EOS DSLR over USB through libgphoto2, needing no Canon SDK
+licence; a UVC webcam; or a generated demo source that badges itself so it cannot
+be left selected by mistake. Live view runs throughout, and a **framing guide** on
+the guest screen marks what the print will keep, dims what it will trim and rules
+it in thirds, so nobody finds themselves cropped out of the 4×6.
+
+**Print** — borderless 4×6 on a Canon SELPHY CP1500 through the macOS print
+system. Three layouts, 1–10 copies, margins and gutters that reflow the sheet as
+they change, and an optional **client logo** in the footer in place of the event
+name. A QR code on the print or the finish screen hands guests their photographs.
+
+**Events** — every session belongs to one client booking, so a night's
+photographs stay segregated on disk rather than piling into one folder. Sessions
+cannot start without an event selected, and the Start button carries the client's
+name.
+
+**Gallery** — GitHub Pages, Cloudinary or a self-hosted site, with
+**password-protected album pages** whose contents are encrypted rather than merely
+hidden: a page found without its password does not know where any photographs
+are. The upload queue is written to disk immediately and drains whenever the site
+is next reachable, which may be three days later.
+
+**Guest screen** — a 1990s camcorder viewfinder that fills any display, with a
+**light-rendering** mode for a booth screen carried over USB, wireless or screen
+sharing, where an idle booth then produces no frames at all.
+
+**Operator console** — navigation down a left rail, print layout and copies first
+because they are what changes between groups, and **touch sizing one tap away** in
+the rail for a console running on a touch panel.
+
 ## Build
 
 ```bash
@@ -138,10 +170,14 @@ twice.
 
 ## Touch
 
-**Touch controls** (Settings › Interface) sizes the console for a fingertip. It
-cannot be detected and is deliberately a preference: an iPad driven as a monitor
-delivers its taps to macOS as ordinary mouse clicks, indistinguishable from a
-trackpad, so there is nothing for the app to sense.
+**Touch controls** sizes the console for a fingertip. The switch sits in the
+sidebar above Open Booth, showing its own state — it is the difference between a
+console you can use with a finger and one you cannot, and somebody setting a
+booth up on a touch panel has no reason to go hunting through Settings for it.
+
+It cannot be detected and is deliberately a preference: an iPad driven as a
+monitor delivers its taps to macOS as ordinary mouse clicks, indistinguishable
+from a trackpad, so there is nothing for the app to sense.
 
 The target is Apple's 44pt minimum, which on an 11" iPad at 2× is about 8.5mm of
 glass — the physical size that number was chosen for on iOS. Measured down the
@@ -361,6 +397,3 @@ it is there to check the crop, not to frame anyone.
   an older version keeps its values instead of resetting.
 
 See `SETUP.txt` for the operator-facing guide that ships inside the DMG.
-# photobooth-mac
-# photobooth-mac
-# photobooth-mac
