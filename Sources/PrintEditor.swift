@@ -196,6 +196,7 @@ struct PrintEditorView: View {
         let selected = selection == id
         return content()
             .frame(width: r.width, height: r.height)
+            .contentShape(Rectangle())
             .overlay {
                 if selected {
                     Rectangle().stroke(Palette.ink, lineWidth: 2)
@@ -204,20 +205,32 @@ struct PrintEditorView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if selected {
-                    // Resize from the corner. Bigger than it looks, because on a
-                    // touch panel an 8pt handle is not a target.
-                    Rectangle()
-                        .fill(Palette.ink)
-                        .frame(width: 14, height: 14)
-                        .contentShape(Rectangle().inset(by: -12))
-                        .gesture(resizeGesture(id: id, sheet: sheet))
-                        .offset(x: 7, y: 7)
+                    // Sits inside the corner rather than straddling it: an
+                    // overlay hanging outside its parent is clipped for hit
+                    // testing even where it still draws, and a handle you can
+                    // see but not grab is worse than no handle.
+                    ZStack {
+                        Rectangle().fill(Palette.ink)
+                        Image(systemName: "arrow.down.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Palette.paper)
+                    }
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+                    .gesture(resizeGesture(id: id, sheet: sheet))
                 }
             }
-            .position(x: r.midX, y: r.midY)
-            .contentShape(Rectangle())
             .onTapGesture { selection = id }
             .gesture(moveGesture(id: id, sheet: sheet))
+            // Placed with `offset`, and last.
+            //
+            // `position` makes the modified view fill its parent, so anything
+            // attached after it — the content shape and both gestures — covered
+            // the whole sheet rather than this one item. Every slot then had a
+            // hit area the size of the page and whichever drew last swallowed
+            // every drag, which is why individual shots could not be moved.
+            // `offset` carries the frame and its hit testing together.
+            .offset(x: r.minX, y: r.minY)
     }
 
     private func moveGesture(id: String, sheet: CGSize) -> some Gesture {
@@ -363,6 +376,19 @@ struct PrintEditorView: View {
                 percentRow("Corners", Binding(
                     get: { draft.slots[i].cornerRadius },
                     set: { draft.slots[i].cornerRadius = $0; dirty = true }), range: 0...0.5)
+
+                Button("Duplicate slot") {
+                    var copy = draft.slots[i]
+                    copy.id = UUID().uuidString
+                    copy.rect.x += 0.04
+                    copy.rect.y += 0.04
+                    copy.rect.clamp()
+                    draft.slots.append(copy)
+                    selection = copy.id
+                    dirty = true
+                }
+                .buttonStyle(QuietButtonStyle())
+
                 removeRow { draft.slots.remove(at: i) }
             }
         } else if let i = draft.overlays.firstIndex(where: { $0.id == id }) {
