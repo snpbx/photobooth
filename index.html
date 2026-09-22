@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>PHOTOBOOTH</title>
+<style>:root { color-scheme: light;
+        --paper:#ffffff; --sky:#dceeff; --mist:#e9e9e9; --carbon:#000000;
+        --blue:#4da2ff; --mint:#55db9c; --lav:#e9ccff; --ember:#fb4903;
+        --sun:#ffd731; --violet:#5c4ade; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--paper); color:var(--carbon); -webkit-text-size-adjust:100%;
+       font:500 16px/1.4 Inter,"Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+       letter-spacing:-.01em; }
+.wrap { max-width:1100px; margin:0 auto; padding:16px 14px 64px; }
+
+/* The headline band: sky wash, big soft corners, stickers pinned to it. */
+header { position:relative; overflow:hidden; background:var(--sky); border:1px solid var(--carbon);
+         border-radius:40px; padding:34px 26px 30px; margin:0 0 18px; }
+.kicker { margin:0 0 10px; font:700 13px/1 Inter,"Helvetica Neue",Arial,sans-serif;
+          letter-spacing:.032em; text-transform:uppercase; }
+h1 { position:relative; margin:0; text-transform:uppercase;
+     font:900 clamp(56px,15vw,150px)/.8 "Arial Black","Helvetica Neue",Impact,Arial,sans-serif;
+     letter-spacing:-.02em; }
+.sub { position:relative; margin:14px 0 0; font-size:15px; }
+.sticker { position:absolute; border:1px solid var(--carbon); border-radius:50%; }
+.s1 { width:74px; height:74px; background:var(--sun);    top:-18px; right:30px; }
+.s2 { width:44px; height:44px; background:var(--ember);  top:54px;  right:-10px; }
+.s3 { width:58px; height:58px; background:var(--mint);   bottom:-24px; right:-18px; }
+.s4 { width:30px; height:30px; background:var(--violet); bottom:22px; right:24px; }
+
+.row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:52px;
+       padding:0 24px; border-radius:1600px; border:1px solid var(--carbon); background:var(--paper);
+       color:var(--carbon); text-decoration:none; cursor:pointer;
+       font:700 15px/1 Inter,"Helvetica Neue",Arial,sans-serif; letter-spacing:.03em; }
+.btn:active { transform:translateY(1px); }
+.btn-go { background:var(--carbon); color:var(--paper); }
+.btn[disabled] { opacity:.5; cursor:default; }
+
+.hero { margin:0 0 22px; display:grid; gap:14px; grid-template-columns:1fr; }
+.hero img { display:block; width:100%; height:auto; border:1px solid var(--carbon); border-radius:30px;
+            background:var(--lav); }
+@media (min-width:640px) { .hero.pair { grid-template-columns:1fr 1fr; align-items:start; } }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; }
+figure { margin:0; background:var(--paper); border:1px solid var(--carbon); border-radius:20px;
+         overflow:hidden; }
+figure img { display:block; width:100%; height:auto; border-bottom:1px solid var(--carbon); }
+figcaption { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px; }
+/* Each number a sticker, the palette used as a set rather than one accent. */
+figcaption span { display:inline-grid; place-items:center; width:34px; height:34px; border-radius:50%;
+                  border:1px solid var(--carbon); font:900 15px/1 "Arial Black",Arial,sans-serif; }
+.grid figure:nth-child(6n+1) figcaption span { background:var(--blue); }
+.grid figure:nth-child(6n+2) figcaption span { background:var(--mint); }
+.grid figure:nth-child(6n+3) figcaption span { background:var(--sun); }
+.grid figure:nth-child(6n+4) figcaption span { background:var(--lav); }
+.grid figure:nth-child(6n+5) figcaption span { background:var(--ember); color:var(--paper); }
+.grid figure:nth-child(6n+6) figcaption span { background:var(--violet); color:var(--paper); }
+figcaption a { display:inline-flex; align-items:center; min-height:40px; padding:0 16px;
+               border:1px solid var(--carbon); border-radius:1600px; color:var(--carbon);
+               text-decoration:none; font:700 13px/1 Inter,Arial,sans-serif; letter-spacing:.03em; }
+
+.note { margin:24px 0 0; padding:16px 18px; background:var(--mist); border-radius:20px; font-size:14px; }
+footer { margin-top:26px; padding:22px; background:var(--sky); border:1px solid var(--carbon);
+         border-radius:30px; font-size:14px; }
+footer p { margin:4px 0; }
+footer a { color:var(--carbon); font-weight:700; }
+.empty { padding:40px 0; text-align:center; }</style>
+</head>
+<body><div class="wrap"><header>
+  <h1>PHOTOBOOTH</h1>
+  <p class="sub">Scan the code on the booth screen or on your print to open your photographs.</p>
+</header>
+<p class="note">Each session has its own address, so this page has nothing to list.
+If you have lost the link, ask whoever ran the booth — they can find it again.</p><footer><p>Photographs stay up as long as this page does. Save the ones you want.</p></footer></div></body></html>
