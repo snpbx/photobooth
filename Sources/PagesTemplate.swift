@@ -48,40 +48,83 @@ enum PagesTemplate {
 
     /// One stylesheet for every page. Mobile first — this is read on a phone
     /// held at a wedding reception, not on a desk.
+    /// Slush — "inflatable sticker universe on pastel paper".
+    ///
+    /// Pastel grounds, a six-colour sticker palette used as a set rather than as
+    /// one accent, 1px black outlines for a hand-cut edge, pills for anything
+    /// pressable, and heavy display type crushed onto itself. No shadows and no
+    /// gradients anywhere: the reference is explicit that elevation comes from
+    /// colour bands and outlines.
+    ///
+    /// Two knowing departures. The reference's faces (Lateral, Aeonik Pro) are
+    /// not free to embed, and every page here is deliberately self-contained so
+    /// that a guest on two bars of venue wifi still gets their photographs — so
+    /// the heaviest system faces stand in. And blue is never a button: the
+    /// reference keeps it for surfaces, with actions black-filled or outlined.
     private static let css = """
-    :root { color-scheme: dark; --bg:#0b0b0c; --card:#161618; --line:#2a2a2e;
-            --ink:#f2f2f3; --dim:#a0a0a8; --accent:#e8b33c; }
+    :root { color-scheme: light;
+            --paper:#ffffff; --sky:#dceeff; --mist:#e9e9e9; --carbon:#000000;
+            --blue:#4da2ff; --mint:#55db9c; --lav:#e9ccff; --ember:#fb4903;
+            --sun:#ffd731; --violet:#5c4ade; }
     * { box-sizing: border-box; }
-    body { margin:0; background:var(--bg); color:var(--ink); -webkit-text-size-adjust:100%;
-           font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-    .wrap { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
-    header { padding:8px 0 20px; }
-    h1 { margin:0 0 4px; font-size:22px; letter-spacing:.01em; }
-    .sub { color:var(--dim); font-size:14px; margin:0; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 26px; }
-    .btn { display:inline-flex; align-items:center; gap:8px; padding:13px 18px; border-radius:12px;
-           border:1px solid var(--line); background:var(--card); color:var(--ink);
-           font-size:15px; font-weight:600; text-decoration:none; cursor:pointer; }
+    body { margin:0; background:var(--paper); color:var(--carbon); -webkit-text-size-adjust:100%;
+           font:500 16px/1.4 Inter,"Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+           letter-spacing:-.01em; }
+    .wrap { max-width:1100px; margin:0 auto; padding:16px 14px 64px; }
+
+    /* The headline band: sky wash, big soft corners, stickers pinned to it. */
+    header { position:relative; overflow:hidden; background:var(--sky); border:1px solid var(--carbon);
+             border-radius:40px; padding:34px 26px 30px; margin:0 0 18px; }
+    .kicker { margin:0 0 10px; font:700 13px/1 Inter,"Helvetica Neue",Arial,sans-serif;
+              letter-spacing:.032em; text-transform:uppercase; }
+    h1 { position:relative; margin:0; text-transform:uppercase;
+         font:900 clamp(56px,15vw,150px)/.8 "Arial Black","Helvetica Neue",Impact,Arial,sans-serif;
+         letter-spacing:-.02em; }
+    .sub { position:relative; margin:14px 0 0; font-size:15px; }
+    .sticker { position:absolute; border:1px solid var(--carbon); border-radius:50%; }
+    .s1 { width:74px; height:74px; background:var(--sun);    top:-18px; right:30px; }
+    .s2 { width:44px; height:44px; background:var(--ember);  top:54px;  right:-10px; }
+    .s3 { width:58px; height:58px; background:var(--mint);   bottom:-24px; right:-18px; }
+    .s4 { width:30px; height:30px; background:var(--violet); bottom:22px; right:24px; }
+
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:52px;
+           padding:0 24px; border-radius:1600px; border:1px solid var(--carbon); background:var(--paper);
+           color:var(--carbon); text-decoration:none; cursor:pointer;
+           font:700 15px/1 Inter,"Helvetica Neue",Arial,sans-serif; letter-spacing:.03em; }
     .btn:active { transform:translateY(1px); }
-    .btn-go { background:var(--accent); border-color:var(--accent); color:#1a1200; }
-    .btn[disabled] { opacity:.55; cursor:default; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; }
-    figure { margin:0; background:var(--card); border:1px solid var(--line); border-radius:14px;
-             overflow:hidden; }
-    figure img { display:block; width:100%; height:auto; }
-    figcaption { display:flex; justify-content:space-between; align-items:center;
-                 padding:9px 12px; font-size:13px; color:var(--dim); }
-    figcaption a { color:var(--ink); text-decoration:none; font-weight:600; }
+    .btn-go { background:var(--carbon); color:var(--paper); }
+    .btn[disabled] { opacity:.5; cursor:default; }
+
     .hero { margin:0 0 22px; display:grid; gap:14px; grid-template-columns:1fr; }
-    .hero img { display:block; width:100%; height:auto; border-radius:14px; border:1px solid var(--line); }
-    /* Print and loop side by side once there is room; stacked on a phone, which
-       is where nearly every guest opens this. */
+    .hero img { display:block; width:100%; height:auto; border:1px solid var(--carbon); border-radius:30px;
+                background:var(--lav); }
     @media (min-width:640px) { .hero.pair { grid-template-columns:1fr 1fr; align-items:start; } }
-    .note { color:var(--dim); font-size:13px; margin:26px 0 0; }
-    footer { margin-top:34px; padding-top:18px; border-top:1px solid var(--line);
-             color:var(--dim); font-size:13px; }
-    footer a { color:var(--ink); }
-    .empty { color:var(--dim); padding:40px 0; text-align:center; }
+
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; }
+    figure { margin:0; background:var(--paper); border:1px solid var(--carbon); border-radius:20px;
+             overflow:hidden; }
+    figure img { display:block; width:100%; height:auto; border-bottom:1px solid var(--carbon); }
+    figcaption { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px; }
+    /* Each number a sticker, the palette used as a set rather than one accent. */
+    figcaption span { display:inline-grid; place-items:center; width:34px; height:34px; border-radius:50%;
+                      border:1px solid var(--carbon); font:900 15px/1 "Arial Black",Arial,sans-serif; }
+    .grid figure:nth-child(6n+1) figcaption span { background:var(--blue); }
+    .grid figure:nth-child(6n+2) figcaption span { background:var(--mint); }
+    .grid figure:nth-child(6n+3) figcaption span { background:var(--sun); }
+    .grid figure:nth-child(6n+4) figcaption span { background:var(--lav); }
+    .grid figure:nth-child(6n+5) figcaption span { background:var(--ember); color:var(--paper); }
+    .grid figure:nth-child(6n+6) figcaption span { background:var(--violet); color:var(--paper); }
+    figcaption a { display:inline-flex; align-items:center; min-height:40px; padding:0 16px;
+                   border:1px solid var(--carbon); border-radius:1600px; color:var(--carbon);
+                   text-decoration:none; font:700 13px/1 Inter,Arial,sans-serif; letter-spacing:.03em; }
+
+    .note { margin:24px 0 0; padding:16px 18px; background:var(--mist); border-radius:20px; font-size:14px; }
+    footer { margin-top:26px; padding:22px; background:var(--sky); border:1px solid var(--carbon);
+             border-radius:30px; font-size:14px; }
+    footer p { margin:4px 0; }
+    footer a { color:var(--carbon); font-weight:700; }
+    .empty { padding:40px 0; text-align:center; }
     """
 
     private static func head(_ title: String) -> String {
@@ -232,8 +275,10 @@ enum PagesTemplate {
         var html = head("Your photos — \(event.name)")
         html += """
         <header>
-          <h1>Your photos</h1>
-          <p class="sub">\(esc(event.name)) · \(dateFormatter.string(from: session.startedAt)) at \(timeFormatter.string(from: session.startedAt))</p>
+          <i class="sticker s1"></i><i class="sticker s2"></i><i class="sticker s3"></i><i class="sticker s4"></i>
+          <p class="kicker">\(esc(event.name))</p>
+          <h1>Your<br>photos</h1>
+          <p class="sub">\(dateFormatter.string(from: session.startedAt)) at \(timeFormatter.string(from: session.startedAt))</p>
         </header>
         """
 

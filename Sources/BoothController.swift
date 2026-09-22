@@ -314,6 +314,12 @@ final class BoothController: ObservableObject {
             guard let self else { throw PagesError.noRepo }
             if self.settings.galleryHost == .cloudinary {
                 try await self.publishToCloudinary(eventID: eventID, sessionID: sessionID)
+                // A failure here is thrown rather than logged: the guest's code
+                // points at this page, so a session whose page never landed has
+                // a QR that goes nowhere, and the queue should keep trying.
+                if self.pagesPublisher() != nil {
+                    try await self.publishCloudinaryPage(eventID: eventID, sessionID: sessionID)
+                }
             } else {
                 try await self.publishToPages(eventID: eventID, sessionID: sessionID)
             }
@@ -1575,6 +1581,71 @@ final class BoothController: ObservableObject {
     /// Uploads one finished session: every photograph, the print, then the page
     /// that points at them. The page goes last on purpose — a guest who scans
     /// early gets nothing rather than a page of broken images.
+    /// A session's webpage on GitHub Pages, with its photographs on Cloudinary.
+    ///
+    /// The split exists because of what each host will do. Cloudinary serves
+    /// images happily but hands uploaded HTML over with
+    /// `Content-Disposition: attachment` — tested against a live account — so a
+    /// page there downloads instead of opening. GitHub Pages serves HTML and
+    /// nothing else. So the page goes to one and the pictures stay on the other,
+    /// and the repository holds a few kilobytes of HTML per session rather than
+    /// every photograph ever taken.
+    ///
+    /// Cross-origin is not a problem: Cloudinary answers with
+    /// `Access-Control-Allow-Origin: *`, so the page's download-all can still
+    /// fetch the images it zips.
+    func publishCloudinaryPage(eventID: String, sessionID: String) async throws {
+        guard let publisher = pagesPublisher() else { throw PagesError.noRepo }
+        guard let cloud = cloudinary else { throw CloudinaryError.notConfigured }
+        guard let session = storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID }),
+              !session.publicToken.isEmpty
+        else { throw UploadError.missingFiles(sessionID) }
+
+        var event = storage.event(eventID) ?? EventRecord.unfiled
+        if (event.publishedSlug ?? "").isEmpty {
+            event.publishedSlug = PagesPublisher.makeToken()
+            storage.persist(event: event)
+        }
+        let token = session.publicToken
+        let eventToken = event.publishedSlug ?? token
+
+        func ref(_ fileName: String) -> PagesTemplate.PhotoRef? {
+            guard let src = cloud.photoURL(token: token, fileName: fileName),
+                  let save = cloud.photoSaveURL(token: token, fileName: fileName) else { return nil }
+            return PagesTemplate.PhotoRef(src: src.absoluteString, save: save.absoluteString)
+        }
+
+        let photos: [PagesTemplate.PhotoRef] = settings.uploadOriginals
+            ? session.photos.sorted { $0.index < $1.index }.compactMap { ref($0.fileName) }
+            : []
+        let printRef = (settings.uploadPrints && session.printFileName != nil) ? ref("print.jpg") : nil
+
+        let entries: [PagesTemplate.AlbumEntry] = storage.sessions
+            .filter { $0.eventID == eventID && $0.finishedAt != nil && !$0.publicToken.isEmpty }
+            .sorted { $0.startedAt < $1.startedAt }
+            .map { s in
+                let cover = s.printFileName != nil
+                    ? cloud.photoURL(token: s.publicToken, fileName: "print.jpg")
+                    : s.photos.sorted { $0.index < $1.index }.first
+                        .flatMap { cloud.photoURL(token: s.publicToken, fileName: $0.fileName) }
+                return PagesTemplate.AlbumEntry(
+                    href: "../../\(PagesPublisher.sessionPath(token: s.publicToken))/",
+                    cover: cover?.absoluteString ?? "",
+                    stamp: s.startedAt,
+                    count: s.photos.count)
+            }
+        let message = "\(event.name) — \(session.id)"
+
+        try await Task.detached(priority: .utility) {
+            try publisher.writeSessionPage(session: session, event: event, token: token,
+                                           eventToken: eventToken,
+                                           photos: photos, print: printRef)
+            try publisher.writeAlbumPage(event: event, eventToken: eventToken, entries: entries)
+            try publisher.commitAndPush(message: message)
+        }.value
+        log.info("Published the page for \(session.id) to GitHub Pages, photographs on Cloudinary")
+    }
+
     func publishToCloudinary(eventID: String, sessionID: String) async throws {
         guard let cloud = cloudinary else { throw CloudinaryError.notConfigured }
         guard let rec = storage.sessions.first(where: { $0.id == sessionID && $0.eventID == eventID })
@@ -1720,6 +1791,11 @@ final class BoothController: ObservableObject {
         // photograph from that session.
         if settings.galleryHost == .cloudinary {
             guard !rec.publicToken.isEmpty, let cloud = cloudinary else { return nil }
+            // With a GitHub Pages site alongside, the session has a real page:
+            // photographs from Cloudinary, served by a host that will render it.
+            if pagesPublisher() != nil, let base = normalisedSiteBase {
+                return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/")
+            }
             let name = rec.printFileName != nil
                 ? "print.jpg"
                 : (rec.photos.sorted { $0.index < $1.index }.first?.fileName ?? "")

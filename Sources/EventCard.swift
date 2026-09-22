@@ -266,6 +266,22 @@ struct GallerySiteCard: View {
 
             if c.settings.galleryHost == .cloudinary {
                 CloudinaryRows(c: c)
+
+                Divider().opacity(0.4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Session webpages").font(.system(size: 12, weight: .semibold))
+                    Text("Cloudinary will not show a webpage — it hands HTML over as a download. Each session's page is published to GitHub Pages instead, with its photographs still loading from Cloudinary. Leave this empty and guests get the print image, as before.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Page site address").font(.system(size: 12, weight: .medium))
+                    TextField("https://yourname.github.io/photos", text: Binding(
+                        get: { c.settingsService.settings.uploadBaseURL },
+                        set: { c.settingsService.settings.uploadBaseURL = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                }
+                GitHubPagesRows(c: c)
             } else if c.settings.galleryHost == .githubPages {
                 GitHubPagesRows(c: c)
             } else {

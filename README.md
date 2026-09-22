@@ -31,6 +31,10 @@ photographs stay segregated on disk rather than piling into one folder. Sessions
 cannot start without an event selected, and the Start button carries the client's
 name.
 
+**Session pages and per-photo codes** — every session gets its own webpage,
+styled after Slush, with its link in the admin; every photograph gets its own code
+on the finish screen. Photographs live on Cloudinary, the pages on GitHub Pages.
+
 **Gallery** — GitHub Pages, Cloudinary or a self-hosted site, with
 **password-protected album pages** whose contents are encrypted rather than merely
 hidden: a page found without its password does not know where any photographs
@@ -326,6 +330,50 @@ so guests know there is one to take before they scan anything. Under **light
 rendering** it is shown as a still: the finish screen can be held for minutes,
 and a loop running that whole time is exactly the perpetual redraw that mode
 exists to remove.
+
+## Session pages and per-photo codes
+
+Every session gets its own webpage, and every photograph its own code on the
+finish screen, so each guest in a group can take the shot they are in.
+
+**Cloudinary will not serve a webpage.** Tested against a live account: an
+uploaded HTML file comes back with `Content-Disposition: attachment`, so a guest
+scanning its code gets a `page.html` download rather than a page. Images are a
+different matter — they return `image/jpeg` with no such header and open straight
+in the browser.
+
+So the work is split by what each host will actually do. **Photographs go to
+Cloudinary; each session's page goes to GitHub Pages** and loads its pictures from
+Cloudinary by address. The repository holds a few kilobytes of HTML per session
+rather than every photograph ever taken. Cloudinary answers with
+`Access-Control-Allow-Origin: *`, so the page's download-all can still fetch the
+images it zips — verified by fetching a Cloudinary image from a page on another
+origin.
+
+Set it up under **Gallery Site** with Cloudinary selected: the Cloudinary rows,
+then *Session webpages* — the github.io address and the local clone. Leave the
+page half empty and guests get the print image, as before. Uploads must be
+switched on for any of this to reach the internet; the admin says so plainly when
+they are off, because the links are built before anything uploads and look
+correct whether or not the photographs ever arrive.
+
+**Per-photo codes** point at the image itself, so they work on Cloudinary alone
+with no page host at all. They follow the same rule as the session code: held
+back until the photographs are online when *only show it once the photos are
+online* is set, because a guest who scans too early gets an error and assumes the
+booth is broken.
+
+In the admin, **Session links** appear for the current session and for every past
+one in the Sessions tab: the session link with its code, Copy and Open, a button
+per photograph, and *Copy every photo link*.
+
+The pages are styled after **Slush** — "inflatable sticker universe on pastel
+paper": pastel grounds, a six-colour sticker palette used as a set, 1px black
+outlines, pills for anything pressable, heavy display type crushed onto itself,
+and no shadows or gradients. The reference's faces are not free to embed and the
+pages are deliberately self-contained for venue wifi, so the heaviest system
+faces stand in; and blue is never a button, which the reference keeps for
+surfaces.
 
 ## Session state machine
 
