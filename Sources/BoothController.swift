@@ -1756,7 +1756,12 @@ final class BoothController: ObservableObject {
     }
 
     func photoLinks(for rec: SessionRecord) -> [(number: Int, url: URL)] {
-        rec.photos.sorted { $0.index < $1.index }.compactMap { p in
+        // Only when the photographs themselves are uploaded. With originals off
+        // just the print goes up, and a link to anything else is a perfectly
+        // formed address for an image that does not exist — a guest scanning
+        // it gets a 404 and concludes the booth is broken.
+        guard settings.uploadOriginals else { return [] }
+        return rec.photos.sorted { $0.index < $1.index }.compactMap { p in
             photoURL(for: rec, photo: p).map { (p.index, $0) }
         }
     }
