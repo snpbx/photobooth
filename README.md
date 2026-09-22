@@ -32,7 +32,7 @@ cannot start without an event selected, and the Start button carries the client'
 name.
 
 **Session pages and per-photo codes** — every session gets its own webpage,
-styled after Slush, with its link in the admin; every photograph gets its own code
+styled after Glyphy, with its link in the admin; every photograph gets its own code
 on the finish screen. Photographs live on Cloudinary, the pages on GitHub Pages.
 
 **Gallery** — GitHub Pages, Cloudinary or a self-hosted site, with
@@ -367,13 +367,17 @@ In the admin, **Session links** appear for the current session and for every pas
 one in the Sessions tab: the session link with its code, Copy and Open, a button
 per photograph, and *Copy every photo link*.
 
-The pages are styled after **Slush** — "inflatable sticker universe on pastel
-paper": pastel grounds, a six-colour sticker palette used as a set, 1px black
-outlines, pills for anything pressable, heavy display type crushed onto itself,
-and no shadows or gradients. The reference's faces are not free to embed and the
-pages are deliberately self-contained for venue wifi, so the heaviest system
-faces stand in; and blue is never a button, which the reference keeps for
-surfaces.
+The pages are styled after **Glyphy** — "buttercream specimen sheet beneath
+sunset bands": a warm cream canvas, a black nav strip, an oversized wordmark with
+a small Japanese eyebrow, and colour only as full-bleed action bands stacked
+yellow → orange → red → burgundy → plum. Cards use 14px corners and pills 28px;
+nothing has a shadow. The reference's faces are not free to embed and the pages
+are deliberately self-contained for venue wifi, so the heaviest system faces
+stand in.
+
+They are built for phones first: fluid type from a 320px iPhone SE up to a
+desktop, gutters that clear the notch and home indicator, 44px-plus tap targets,
+a smaller headline in landscape, and no sideways scrolling at any width.
 
 ## Session state machine
 
