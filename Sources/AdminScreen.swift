@@ -619,7 +619,7 @@ private struct SessionCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let s = c.currentSession { SessionQRRow(c: c, rec: s) }
+            if let s = c.currentSession { SessionLinks(c: c, rec: s) }
         }
     }
 }
@@ -771,34 +771,85 @@ struct FlowRow: View {
 
 /// The link guests scan. Shown as soon as there is a session to point at, so the
 /// operator can hold the console up to a phone if the booth screen is busy.
-private struct SessionQRRow: View {
+/// Every address a session can be reached at: the session as a whole, and each
+/// photograph on its own.
+///
+/// Shared by the Session card and the Sessions tab, so a group from an hour ago
+/// is as easy to send a link to as the one still standing at the booth.
+struct SessionLinks: View {
     @ObservedObject var c: BoothController
     let rec: SessionRecord
 
     var body: some View {
         if let url = c.galleryURL(for: rec) {
-            HStack(alignment: .top, spacing: 12) {
-                if let qr = QRCode.image(for: url.absoluteString, minimumSide: 220) {
-                    Image(nsImage: qr)
-                        .resizable()
-                        .interpolation(.none)
-                        .frame(width: 72, height: 72)
-                        .padding(4)
-                        .background(Color.white)
+            VStack(alignment: .leading, spacing: 12) {
+                if !c.settings.uploadEnabled {
+                    // Otherwise these are perfectly formed links to nothing: the
+                    // address is built before anything uploads, so it looks right
+                    // whether or not the photographs ever arrive.
+                    Label("Uploads are off, so nothing is online yet — these links will not open until they are switched on in Gallery Site.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.statusWarn)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    OSDLabel(text: "Album link", size: 10, color: Palette.textDim, tracking: 0.22)
-                    Text(url.absoluteString)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Palette.textDim)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                    HStack(spacing: 8) {
-                        Button("Copy Link") { c.copyGalleryLink(for: rec) }
-                            .buttonStyle(QuietButtonStyle())
-                        Button("Open") { NSWorkspace.shared.open(url) }
-                            .buttonStyle(QuietButtonStyle())
+
+                HStack(alignment: .top, spacing: 12) {
+                    if let qr = QRCode.image(for: url.absoluteString, minimumSide: 220) {
+                        Image(nsImage: qr)
+                            .resizable()
+                            .interpolation(.none)
+                            .frame(width: 72, height: 72)
+                            .padding(4)
+                            .background(Color.white)
                     }
+                    VStack(alignment: .leading, spacing: 6) {
+                        OSDLabel(text: "Session link", size: 10, color: Palette.textDim, tracking: 0.22)
+                        Text(url.absoluteString)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Palette.textDim)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                        HStack(spacing: 8) {
+                            Button("Copy Link") { c.copyLink(url) }
+                                .buttonStyle(QuietButtonStyle())
+                            Button("Open") { NSWorkspace.shared.open(url) }
+                                .buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                }
+
+                let photos = c.photoLinks(for: rec)
+                if !photos.isEmpty {
+                    OSDLabel(text: "Each photo", size: 10, color: Palette.textDim, tracking: 0.22)
+                    FlowRow(spacing: 6, perRow: 8) {
+                        photos.map { link in
+                            AnyView(
+                                Button { NSWorkspace.shared.open(link.url) } label: {
+                                    Text("\(link.number)")
+                                        .font(VHS.mono(13, .bold))
+                                        .frame(width: 38, height: 34)
+                                        .background(Palette.canvas, in: Capsule())
+                                        .foregroundStyle(Palette.ink)
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Open photo \(link.number)")
+                                .contextMenu {
+                                    Button("Copy link to photo \(link.number)") { c.copyLink(link.url) }
+                                }
+                            )
+                        }
+                    }
+                    Button("Copy every photo link") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(
+                            photos.map { "Photo \($0.number): \($0.url.absoluteString)" }.joined(separator: "\n"),
+                            forType: .string)
+                        c.show(.info, "\(photos.count) photo links copied.")
+                    }
+                    .buttonStyle(QuietButtonStyle())
                 }
             }
         } else {

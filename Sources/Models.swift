@@ -462,6 +462,10 @@ struct AppSettings: Codable, Equatable {
     var showQRCode: Bool = true
     var printQRCode: Bool = false
     var qrCaption: String = "SCAN TO GET YOUR PHOTOS"
+    /// A code per photograph on the finish screen, beside the one for the whole
+    /// session — so each guest in a group can take the shot they are in without
+    /// wading through everyone else's.
+    var qrPerPhoto: Bool = true
     var qrTarget: QRTarget = .sessionAlbum
     var customQRLink: String = ""            // Instagram, a website — typed in Admin
     var customQRCaption: String = "FOLLOW US FOR YOUR PHOTOS"

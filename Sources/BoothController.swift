@@ -305,6 +305,9 @@ final class BoothController: ObservableObject {
                 if case .complete = self.state, self.sessionQRImage == nil {
                     self.sessionQRImage = self.makeQR(for: rec)
                 }
+                if case .complete = self.state, self.photoQRs.isEmpty {
+                    self.photoQRs = self.makePhotoQRs(for: rec)
+                }
             }
         }
         uploader.publishToPages = { [weak self] eventID, sessionID in
@@ -582,6 +585,7 @@ final class BoothController: ObservableObject {
         motionFrames.removeAll()
         motionShot = nil
         sessionQRImage = nil
+        photoQRs = []
         shotPreview = nil
         retakeCurrentRequested = false
         retakeQueue = []
@@ -882,6 +886,7 @@ final class BoothController: ObservableObject {
 
         queueUpload(session)
         sessionQRImage = makeQR(for: session)
+        photoQRs = makePhotoQRs(for: session)
         brandQRImage = settings.showQRCode && qrPayloads(for: session).brand != nil ? makeBrandQR() : nil
         let waitingOnUpload = settings.qrRequiresUpload && session.uploadState != .uploaded
         if settings.showQRCode, sessionQRImage == nil, brandQRImage == nil, !waitingOnUpload {
@@ -1105,6 +1110,7 @@ final class BoothController: ObservableObject {
         motionFrames.removeAll()
         motionShot = nil
         sessionQRImage = nil
+        photoQRs = []
         brandQRImage = nil
         let total = session.layout.photoCount
         let numbers = retakeQueue.sorted().map(String.init).joined(separator: ", ")
@@ -1143,6 +1149,7 @@ final class BoothController: ObservableObject {
         pendingPrint = false
         retakingShot = nil
         sessionQRImage = nil
+        photoQRs = []
         brandQRImage = nil
         storage.refreshFreeSpace()
         updateLiveViewDesire()
@@ -1644,6 +1651,63 @@ final class BoothController: ObservableObject {
     }
 
     // MARK: - QR handout
+
+    // MARK: - Per-photo links
+
+    /// One photograph's own address, and the code that opens it.
+    struct PhotoQR: Identifiable {
+        let id: Int            // the photograph's 1-based position in the session
+        let url: URL
+        let image: NSImage
+    }
+
+    /// Codes for each photograph of the session on the finish screen.
+    @Published private(set) var photoQRs: [PhotoQR] = []
+
+    /// Where one photograph opens directly, on whichever host the session goes to.
+    ///
+    /// On Cloudinary this is the image itself, which a phone renders and saves
+    /// like any picture. That matters more than it sounds: Cloudinary delivers
+    /// uploaded HTML with `Content-Disposition: attachment` — tested against a
+    /// live account — so a page there downloads instead of opening. An image
+    /// address is the one thing it will reliably show.
+    func photoURL(for rec: SessionRecord, photo: Photo) -> URL? {
+        guard !rec.publicToken.isEmpty else { return nil }
+        switch settings.galleryHost {
+        case .cloudinary:
+            return cloudinary?.photoURL(token: rec.publicToken, fileName: photo.fileName)
+        case .githubPages:
+            guard let base = normalisedSiteBase else { return nil }
+            return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/\(photo.fileName)")
+        case .server:
+            return nil
+        }
+    }
+
+    func photoLinks(for rec: SessionRecord) -> [(number: Int, url: URL)] {
+        rec.photos.sorted { $0.index < $1.index }.compactMap { p in
+            photoURL(for: rec, photo: p).map { (p.index, $0) }
+        }
+    }
+
+    private func makePhotoQRs(for rec: SessionRecord) -> [PhotoQR] {
+        guard settings.showQRCode, settings.qrPerPhoto else { return [] }
+        // Same rule as the session code: a guest who scans before the photograph
+        // is online gets an error page and assumes the booth is broken.
+        if settings.qrRequiresUpload && rec.uploadState != .uploaded { return [] }
+        return photoLinks(for: rec).compactMap { link in
+            // Large enough to stay crisp when the finish screen scales it up; a
+            // QR is drawn without interpolation, so the source size is the ceiling.
+            guard let img = QRCode.image(for: link.url.absoluteString, minimumSide: 360) else { return nil }
+            return PhotoQR(id: link.number, url: link.url, image: img)
+        }
+    }
+
+    func copyLink(_ url: URL) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        show(.info, "Link copied.")
+    }
 
     /// Address of the album page for one session on the gallery site.
     ///

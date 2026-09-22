@@ -433,7 +433,16 @@ private struct CompleteCentre: View {
                 // to point at. Two are stacked and narrowed rather than set side
                 // by side, so the print keeps the width it needs.
                 let cards = qrCards
-                if !cards.isEmpty {
+                if !c.photoQRs.isEmpty {
+                    // One code per photograph, after the ones for the whole
+                    // session: each guest in a group scans the shot they are in.
+                    // The long "scan to get your photos" caption does not fit a
+                    // grid tile; beside PHOTO 1, 2, 3, "ALL PHOTOS" says it.
+                    PhotoQRGrid(tiles: (c.sessionQRImage.map { [("ALL PHOTOS", $0)] } ?? [])
+                                    + (c.brandQRImage.map { [(c.settings.customQRCaption, $0)] } ?? [])
+                                    + c.photoQRs.map { ("PHOTO \($0.id)", $0.image) },
+                                m: m)
+                } else if !cards.isEmpty {
                     VStack(spacing: m.pt(2)) {
                         ForEach(cards, id: \.caption) { card in
                             QRPanel(image: card.image, caption: card.caption, m: m)
@@ -486,6 +495,45 @@ private struct CompleteCentre: View {
 ///
 /// Drawn white on black and without interpolation — a smoothed or tinted QR is
 /// the usual reason a phone camera sits there refusing to read one.
+/// Codes laid out as a grid, sized so each stays scannable across a room.
+///
+/// A QR code needs about 20mm on a phone's view before it reads reliably. On the
+/// 32" 1080p panel this booth runs at, a tile of 12 stage units comes out near
+/// 70mm, so three across leaves plenty in hand even from a couple of metres.
+private struct PhotoQRGrid: View {
+    let tiles: [(label: String, image: NSImage)]
+    let m: StageMetrics
+
+    var body: some View {
+        let cols = tiles.count <= 4 ? 2 : (tiles.count <= 9 ? 3 : 4)
+        let side = m.pt(cols == 2 ? 15 : (cols == 3 ? 12 : 9.5))
+        let grid = Array(repeating: GridItem(.fixed(side), spacing: m.pt(1.4)), count: cols)
+
+        LazyVGrid(columns: grid, spacing: m.pt(1.2)) {
+            ForEach(Array(tiles.enumerated()), id: \.offset) { _, t in
+                VStack(spacing: m.pt(0.5)) {
+                    Image(nsImage: t.image)
+                        .resizable()
+                        .interpolation(.none)     // a smoothed QR is an unreadable one
+                        .aspectRatio(1, contentMode: .fit)
+                        .padding(m.pt(0.6))
+                        .background(Color.white)
+                    VHSText(text: t.label, size: m.pt(1.15), color: VHS.phosphor,
+                            tracking: 0.12, fringe: 0)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .frame(width: side)
+            }
+        }
+        .padding(m.pt(1.2))
+        .background(Color.black.opacity(0.75))
+        .overlay(Rectangle().stroke(VHS.phosphor.opacity(0.55), lineWidth: max(1, m.pt(0.18)))
+            .allowsHitTesting(false))
+        .fixedSize()
+    }
+}
+
 private struct QRPanel: View {
     let image: NSImage
     let caption: String

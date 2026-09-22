@@ -262,6 +262,10 @@ private struct SessionDetail: View {
 
                 infoGrid
 
+                // The same links the Session card shows for the group at the
+                // booth, so an older session is no harder to send on.
+                SessionLinks(c: c, rec: rec)
+
                 if let p = rec.printFileName {
                     let url = c.storage.directory(for: rec.id).appendingPathComponent(p)
                     VStack(alignment: .leading, spacing: 6) {
