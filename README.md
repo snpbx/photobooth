@@ -99,6 +99,15 @@ automatic mode — are shown as plain text and cannot be picked, because setting
 them would be ignored. A write is refused during a session, and the whole list is
 re-read after every change, since on a Canon the exposure settings move together.
 
+**Not every PTP device is a camera.** This booth drives its guest screen from an
+iPad over USB, and an iPad answers PTP well enough that libgphoto2 lists it,
+opens it, and then refuses every preview and capture with *Unsupported
+operation* — a booth connected to a tablet, reporting a camera that cannot take
+a photograph. The shim now picks the first device on the bus that is not an
+Apple one and binds to that model and port explicitly, rather than letting
+`gp_camera_init` open whatever answers first; if nothing on the bus qualifies it
+says so instead of connecting to something useless.
+
 **Printer** — prints go through the macOS print system (CUPS) via `lp`, which
 gives a trackable job id and access to the CP1500's `Postcard.Fullbleed` media.
 No proprietary SELPHY protocol is implemented.
@@ -498,6 +507,13 @@ or pixels. Inches would have to be re-derived whenever the sheet changed;
 fractions never do, so one template renders identically at 200, 300 or 600 DPI.
 Templates live as one JSON file beside the settings — a few kilobytes, written
 atomically, so a power cut mid-event cannot leave half a library behind.
+
+**A saved layout also decides how many photographs to take.** Six slots showing
+three photographs ask for three shots, not the eight the built-in layout behind
+them would have wanted; a layout wanting eight gets eight even when the built-in
+selection is four, which used to leave half the sheet printing grey numbered
+placeholders. A run keeps the count it started with, so changing the layout
+mid-session cannot move the goalposts on a guest halfway through.
 
 Which layout a sheet uses is resolved fresh each time: **the event's own, then
 the booth default, then the built-in layouts**. Deleting a template while it is

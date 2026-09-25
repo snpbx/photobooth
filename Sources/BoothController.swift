@@ -169,6 +169,12 @@ final class BoothController: ObservableObject {
                             : "Print layout \(templates.template(id)?.name ?? id) set for \(e.name)")
     }
 
+    /// How many photographs the run in progress was started with. A session
+    /// keeps the count it began with even if the layout is changed underneath
+    /// it, because a guest halfway through four shots should not suddenly be
+    /// asked for eight.
+    private(set) var plannedShots: Int = 0
+
     /// Photographs a session needs — the template's, when one is in use.
     var templateShotCount: Int? {
         guard let t = activeTemplate, !t.slots.isEmpty else { return nil }
@@ -639,6 +645,10 @@ final class BoothController: ObservableObject {
         }
 
         let layout = settings.layout
+        // A saved layout decides how many photographs it needs — six slots
+        // showing three photographs want three shots, not the eight the
+        // built-in layout behind them would have asked for.
+        let total = templateShotCount ?? layout.photoCount
         let rec: SessionRecord
         do {
             rec = try storage.createSession(eventID: event.id, layout: layout, copies: settings.copies)
@@ -663,11 +673,11 @@ final class BoothController: ObservableObject {
         state = .starting
         updateLiveViewDesire()
 
-        sessionTask = Task { [weak self] in await self?.runSession(layout: layout) }
+        plannedShots = total
+        sessionTask = Task { [weak self] in await self?.runSession(total: total) }
     }
 
-    private func runSession(layout: PrintLayout) async {
-        let total = layout.photoCount
+    private func runSession(total: Int) async {
         // Give live view a beat to spin up (the 6D lifts its mirror on the first frame).
         try? await Task.sleep(nanoseconds: 900_000_000)
         if Task.isCancelled { return }
@@ -1084,10 +1094,11 @@ final class BoothController: ObservableObject {
 
     /// The number of shots this session is meant to end up with.
     var shotCount: Int {
-        // A template decides how many photographs a session needs; without one
-        // the chosen layout does, as before.
-        if currentSession == nil, let n = templateShotCount { return n }
-        return (currentSession?.layout ?? settings.layout).photoCount
+        // A run in flight keeps the count it started with; otherwise the layout
+        // about to be used decides — the saved one if there is one, else the
+        // built-in behind it.
+        if currentSession != nil, plannedShots > 0 { return plannedShots }
+        return templateShotCount ?? settings.layout.photoCount
     }
 
     /// True when clicking a number would do something useful right now.
@@ -1180,7 +1191,9 @@ final class BoothController: ObservableObject {
         sessionQRImage = nil
         photoQRs = []
         brandQRImage = nil
-        let total = session.layout.photoCount
+        let total = plannedShots > 0 ? plannedShots
+                                     : (templateShotCount ?? session.layout.photoCount)
+        plannedShots = total
         let numbers = retakeQueue.sorted().map(String.init).joined(separator: ", ")
         log.info("Session \(session.id) reopened to retake photo(s) \(numbers)")
         state = .starting
@@ -1209,6 +1222,7 @@ final class BoothController: ObservableObject {
         sessionTask = nil
         finishHoldTask?.cancel()
         finishHoldTask = nil
+        plannedShots = 0
         state = .idle
         shotPreview = nil
         retakeCurrentRequested = false

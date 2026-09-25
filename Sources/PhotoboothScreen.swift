@@ -173,7 +173,7 @@ private struct OSDLayer: View {
                 if let p = c.progress {
                     VHSText(text: "PHOTO \(p.shot)/\(p.total)", size: m.pt(2.2))
                 } else {
-                    VHSText(text: "\(c.settings.layout.photoCount) SHOT", size: m.pt(2.2))
+                    VHSText(text: "\(c.shotCount) SHOT", size: m.pt(2.2))
                 }
                 VHSText(text: layoutTag, size: m.pt(1.7), color: VHS.dim)
             }
@@ -200,6 +200,11 @@ private struct OSDLayer: View {
     }
 
     private var layoutTag: String {
+        // A saved layout is what is actually being printed, so it is what the
+        // corner should say — not the built-in it happens to sit in front of.
+        if let t = c.activeTemplate, !t.name.isEmpty {
+            return String(t.name.prefix(14))
+        }
         switch c.settings.layout {
         case .duplicateStrips: return "STRIP ×2"
         case .eightUnique:     return "8 UNIQUE"

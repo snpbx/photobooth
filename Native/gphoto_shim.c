@@ -20,6 +20,23 @@ const char *gpshim_last_error(void) { return g_err; }
 const char *gpshim_camera_name(void) { return g_name; }
 void gpshim_free(unsigned char *p) { if (p) free(p); }
 
+// Not every PTP device on the bus is a camera.
+//
+// This booth runs its guest screen on an iPad over USB, and an iPad answers
+// PTP well enough that libgphoto2 lists it, lets us open it, and then refuses
+// every preview and every capture with "Unsupported operation" — so the booth
+// sat there connected to a tablet, reporting a camera that could not take a
+// photograph. Apple's own devices are never the booth camera, so they are kept
+// out of both the list and the choice of what to open.
+static int is_not_a_camera(const char *model) {
+    if (!model) return 1;
+    static const char *skip[] = { "Apple", "iPad", "iPhone", "iPod", NULL };
+    for (int i = 0; skip[i]; i++) {
+        if (strcasestr(model, skip[i])) return 1;
+    }
+    return 0;
+}
+
 int gpshim_detect_summary(char *out, int cap) {
     if (cap > 0) out[0] = '\0';
     GPContext *ctx = gp_context_new();
@@ -34,6 +51,7 @@ int gpshim_detect_summary(char *out, int cap) {
         const char *model = NULL, *port = NULL;
         gp_list_get_name(list, i, &model);
         gp_list_get_value(list, i, &port);
+        if (is_not_a_camera(model)) continue;
         int wrote = snprintf(out + used, (size_t)(cap - used), "%s\t%s\n",
                              model ? model : "", port ? port : "");
         if (wrote < 0 || wrote >= cap - used) break;
@@ -45,12 +63,69 @@ int gpshim_detect_summary(char *out, int cap) {
     return count;
 }
 
+/// Points the camera at one specific model on one specific port.
+///
+/// Without this, gp_camera_init opens whatever the bus offers first, which on
+/// this booth is the iPad. Returns 0, or <0 with the reason in g_err.
+static int bind_to(Camera *cam, GPContext *ctx, const char *model, const char *port) {
+    CameraAbilitiesList *abilities = NULL;
+    GPPortInfoList *ports = NULL;
+    int rc = -1;
+
+    if (gp_abilities_list_new(&abilities) < GP_OK) goto done;
+    if (gp_abilities_list_load(abilities, ctx) < GP_OK) goto done;
+    int m = gp_abilities_list_lookup_model(abilities, model);
+    if (m < GP_OK) { snprintf(g_err, sizeof(g_err), "unknown model %s", model); goto done; }
+    CameraAbilities a;
+    if (gp_abilities_list_get_abilities(abilities, m, &a) < GP_OK) goto done;
+    if (gp_camera_set_abilities(cam, a) < GP_OK) goto done;
+
+    if (gp_port_info_list_new(&ports) < GP_OK) goto done;
+    if (gp_port_info_list_load(ports) < GP_OK) goto done;
+    int p = gp_port_info_list_lookup_path(ports, port);
+    if (p < GP_OK) { snprintf(g_err, sizeof(g_err), "no port %s", port); goto done; }
+    GPPortInfo info;
+    if (gp_port_info_list_get_info(ports, p, &info) < GP_OK) goto done;
+    if (gp_camera_set_port_info(cam, info) < GP_OK) goto done;
+    rc = 0;
+
+done:
+    if (ports) gp_port_info_list_free(ports);
+    if (abilities) gp_abilities_list_free(abilities);
+    return rc;
+}
+
 int gpshim_connect(void) {
     if (g_cam) return 0;
     g_ctx = gp_context_new();
     if (gp_camera_new(&g_cam) < GP_OK) {
         g_cam = NULL;
         snprintf(g_err, sizeof(g_err), "camera_new failed");
+        return -1;
+    }
+
+    // Pick the first real camera on the bus rather than the first PTP device.
+    // If nothing on the bus qualifies, say so plainly instead of opening a
+    // tablet and failing at the first shutter press.
+    int bound = 0, ptp_devices = 0;
+    CameraList *list = NULL;
+    if (gp_list_new(&list) >= GP_OK) {
+        int n = gp_camera_autodetect(list, g_ctx);
+        for (int i = 0; i < n; i++) {
+            const char *model = NULL, *port = NULL;
+            gp_list_get_name(list, i, &model);
+            gp_list_get_value(list, i, &port);
+            ptp_devices++;
+            if (is_not_a_camera(model)) continue;
+            if (bind_to(g_cam, g_ctx, model, port) == 0) { bound = 1; break; }
+        }
+        gp_list_free(list);
+    }
+    if (!bound && ptp_devices > 0) {
+        snprintf(g_err, sizeof(g_err),
+                 "No camera on USB — the only devices found are not cameras.");
+        gp_camera_free(g_cam); g_cam = NULL;
+        gp_context_unref(g_ctx); g_ctx = NULL;
         return -1;
     }
 
