@@ -389,6 +389,12 @@ struct AppSettings: Codable, Equatable {
     /// they press. Costs a DSLR its battery and some sensor heat all evening.
     var idleLiveView: Bool = true
     var mirrorImages: Bool = true       // preview, review and the saved file, together
+    /// How much the live picture is lifted on the guest screen, 0…0.5. A booth
+    /// is usually the darkest corner of the room and the camera is exposed for
+    /// the flash, so what the guest sees while framing can be far darker than
+    /// the photograph that comes out. This lifts the screen only — nothing here
+    /// touches the file, the print, or what the camera is set to.
+    var previewBrightness: Double = 0.12
 
     // Timing (seconds)
     var countdownSeconds: Int = 3

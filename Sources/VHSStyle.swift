@@ -168,6 +168,11 @@ struct Vignette: View {
 /// horizontal tracking band that drifts, so the screen never looks quite static.
 struct CRTOverlay: View {
     var scanlineSpacing: CGFloat = 3
+    /// How dark the scanlines and the vignette are. Both are dialled back while
+    /// a guest is framing: the camcorder dress is worth having, but not at the
+    /// cost of somebody being unable to see whether they are in the shot.
+    var scanlineOpacity: Double = 0.22
+    var vignetteStrength: Double = 0.55
     var showsTrackingBand = true
     @State private var bandY: CGFloat = -0.2
 
@@ -183,8 +188,8 @@ struct CRTOverlay: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Scanlines(spacing: scanlineSpacing)
-                Vignette()
+                Scanlines(spacing: scanlineSpacing, opacity: scanlineOpacity)
+                Vignette(strength: vignetteStrength)
                 if bandVisible {
                     LinearGradient(colors: [.clear, .white.opacity(0.045), .clear],
                                    startPoint: .top, endPoint: .bottom)

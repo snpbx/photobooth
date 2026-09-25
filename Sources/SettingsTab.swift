@@ -461,6 +461,21 @@ private struct CameraAdvancedCard: View {
                     range: 1...30, suffix: "fps")
             }
 
+            LabeledRow(label: "Preview brightness",
+                       help: "Lifts the live picture on the guest screen so people can see themselves to frame up. It changes the screen only — never the photograph, the print, or what the camera is set to.") {
+                HStack(spacing: 8) {
+                    Slider(value: Binding(
+                        get: { c.settingsService.settings.previewBrightness },
+                        set: { c.settingsService.settings.previewBrightness = $0 }),
+                        in: 0...0.5)
+                        .frame(width: 120)
+                    Text("\(Int(c.settings.previewBrightness * 100))%")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Palette.textDim)
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
+
             if c.settings.cameraBackend == .webcam {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Video device").font(.system(size: 12, weight: .medium))

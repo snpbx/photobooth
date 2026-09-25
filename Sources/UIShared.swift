@@ -323,6 +323,10 @@ struct FramingGuide: View {
     /// Darken what is going to be trimmed. A line on its own is ambiguous about
     /// which side of it you should be standing on.
     var dims = true
+    /// How far down the trimmed edges go. Enough to read as "not this part",
+    /// not so far that a guest at the edge of the frame disappears from their
+    /// own screen while they are still deciding where to stand.
+    var dimStrength: Double = 0.30
     /// Thirds inside the kept area, to frame against rather than just avoid.
     var thirds = true
 
@@ -338,7 +342,7 @@ struct FramingGuide: View {
                 if dims, kept != shown {
                     // Even-odd fill leaves a hole where the picture survives.
                     Path { p in p.addRect(shownRect); p.addRect(keptRect) }
-                        .fill(Color.black.opacity(0.42), style: FillStyle(eoFill: true))
+                        .fill(Color.black.opacity(dimStrength), style: FillStyle(eoFill: true))
                 }
                 if thirds {
                     Path { p in

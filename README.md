@@ -142,6 +142,20 @@ Tools/                    offscreen screenshot harness, icon generator
 Both screens are dressed as a 1990s camcorder: black field, dot-matrix capitals
 with VHS colour fringing, scanlines, vignette and a drifting tracking band.
 
+**The dressing gives way to the picture.** Whenever somebody is on screen and
+can still move — the idle screen showing the camera, the countdown, between shots
+— the scanlines and vignette drop to a suggestion of themselves, and the idle
+words carry a tight shadow instead of the black wash that used to sit behind
+them. A wash dark enough to hold the lettering also hides the middle of the
+frame, which is exactly where the guest is standing.
+
+**Preview brightness** (Settings → Camera Advanced) lifts the live picture on the
+guest screen, 0–50%, with contrast following it so the lift does not just grey
+the picture. A booth stands in the darkest corner of the room while the camera is
+exposed for its flash, so what a guest sees while framing can be far darker than
+the photograph that comes out. The lift is on that screen alone: the file, the
+print, the console's own preview and the camera's settings are untouched.
+
 The guest viewfinder carries the OSD a camcorder would — `● REC` and a running
 timecode top-left, shot counter and layout top-right, `18:43 / 21.08.2026 FRI`
 bottom-left, event name and an `SP` tape gauge bottom-right that empties as the

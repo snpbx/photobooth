@@ -32,7 +32,12 @@ struct PhotoboothScreen: View {
 
                 OSDLayer(c: c, live: live, m: m, now: clock.now)
 
-                CRTOverlay(scanlineSpacing: max(2, m.pt(0.30)))
+                // Dressing stays out of the way of somebody trying to stand in
+                // the right place: over a live picture the scanlines and the
+                // vignette drop to a suggestion of themselves.
+                CRTOverlay(scanlineSpacing: max(2, m.pt(0.30)),
+                           scanlineOpacity: framingNow ? 0.07 : 0.22,
+                           vignetteStrength: framingNow ? 0.20 : 0.55)
             }
             .frame(width: size.width, height: size.height)
             .clipped()
@@ -41,6 +46,9 @@ struct PhotoboothScreen: View {
         .background(VHS.black)
         .environment(\.vhsLightRendering, c.settings.lightRendering)
     }
+
+    /// Somebody is looking at themselves right now, and can still move.
+    private var framingNow: Bool { showsFramingGuide && live.frame != nil }
 
     /// States where the guest is looking at themselves and can still move.
     private var showsFramingGuide: Bool {
@@ -71,11 +79,7 @@ private struct ViewfinderImage: View {
                 // mirror rather than a black screen. Falls back to the empty
                 // field when the camera has nothing to give.
                 if c.settings.idleLiveView, let frame = live.frame {
-                    Image(nsImage: frame)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(x: c.settings.mirrorImages ? -1 : 1, y: 1)
-                        .saturation(0.92)
+                    picture(frame)
                 } else {
                     VHS.field
                 }
@@ -97,17 +101,33 @@ private struct ViewfinderImage: View {
                 VHS.field
             default:
                 if let frame = live.frame {
-                    Image(nsImage: frame)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(x: c.settings.mirrorImages ? -1 : 1, y: 1)
-                        .saturation(0.92)
+                    picture(frame)
                 } else {
                     VHS.field
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The camera's own picture, lifted for the room.
+    ///
+    /// A booth stands in the dark corner and the camera is exposed for its
+    /// flash, so the live picture can be far darker than the photograph that
+    /// comes out of it — and a guest who cannot see themselves cannot frame
+    /// themselves. The lift is on the screen alone: the file, the print and the
+    /// camera's own settings are untouched. Contrast comes up with brightness
+    /// because lifting brightness by itself only greys the picture.
+    @ViewBuilder
+    private func picture(_ frame: NSImage) -> some View {
+        let lift = min(max(c.settings.previewBrightness, 0), 0.5)
+        Image(nsImage: frame)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .scaleEffect(x: c.settings.mirrorImages ? -1 : 1, y: 1)
+            .brightness(lift)
+            .contrast(1 + lift * 0.5)
+            .saturation(lift > 0 ? 1 : 0.92)
     }
 }
 
@@ -326,15 +346,12 @@ private struct IdleCentre: View {
             }
         }
         .padding(m.pt(6))
-        // A scrim only when there is a picture behind the words: over the empty
-        // field it would just be a grey box.
-        .background {
-            if overPicture {
-                RadialGradient(colors: [Color.black.opacity(0.78), Color.black.opacity(0.18)],
-                               center: .center, startRadius: 0, endRadius: m.pt(52))
-                    .blur(radius: m.pt(2))
-            }
-        }
+        // No scrim over the picture. A wash dark enough to carry the words also
+        // hides the middle of the frame — exactly where the guest is standing —
+        // so the words carry themselves instead: a tight shadow around the
+        // glyphs, which costs the picture nothing but the strokes' own width.
+        .shadow(color: .black.opacity(overPicture ? 0.9 : 0), radius: m.pt(0.5))
+        .shadow(color: .black.opacity(overPicture ? 0.55 : 0), radius: m.pt(2.4))
         .onAppear {
             guard !light else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { blink = false }
