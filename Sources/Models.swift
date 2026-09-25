@@ -422,6 +422,15 @@ struct AppSettings: Codable, Equatable {
     /// When set it takes the place of the footer text on the print.
     var footerImageFile: String = ""
     var footerEnabled: Bool = true
+    /// Artwork shown on the idle screen in place of the event title, imported
+    /// through Admin and stored in `BrandingAssets`. A booth is branded by
+    /// whoever hired it, and a wordmark reads across a room in a way that
+    /// dot-matrix capitals of the same height do not.
+    var idleLogoFile: String = ""
+    /// How wide the logo is drawn, as a fraction of the guest screen. The screen
+    /// is any shape from an iPad to a 1080p panel, so a fraction holds its
+    /// proportions where a pixel width would not.
+    var idleLogoWidth: Double = 0.46
 
     // Gallery site
     var uploadEnabled: Bool = false

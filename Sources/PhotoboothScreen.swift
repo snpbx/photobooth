@@ -312,10 +312,24 @@ private struct IdleCentre: View {
     var body: some View {
         let ready = c.cameraState.isReady && c.activeEvent != nil
         let overPicture = c.settings.idleLiveView && live.frame != nil
+        let idleLogo = IdleLogoCache.image(for: c.settings.idleLogoFile)
 
         VStack(spacing: m.pt(3)) {
-            VHSText(text: c.settings.eventTitle, size: m.pt(3.4),
-                    color: overPicture ? VHS.phosphor.opacity(0.9) : VHS.dim, tracking: 0.34)
+            // The operator's own mark when they have one, the event's name when
+            // they have not. Drawn at its own proportions — a wordmark stretched
+            // to a box is somebody's brand ruined — and never larger than the
+            // width they asked for.
+            if let logo = idleLogo {
+                Image(nsImage: logo)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: m.size.width * CGFloat(min(max(c.settings.idleLogoWidth, 0.1), 0.9)))
+                    .opacity(overPicture ? 0.95 : 0.85)
+                    .accessibilityLabel(c.settings.eventTitle)
+            } else {
+                VHSText(text: c.settings.eventTitle, size: m.pt(3.4),
+                        color: overPicture ? VHS.phosphor.opacity(0.9) : VHS.dim, tracking: 0.34)
+            }
 
             Button(action: { c.startSession() }) {
                 VStack(spacing: m.pt(2)) {
@@ -361,6 +375,21 @@ private struct IdleCentre: View {
             guard !light else { return }
             withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { blink = false }
         }
+    }
+}
+
+/// The imported mark, read once per appearance rather than per frame — the idle
+/// screen redraws on a blink timer, and a file read on each pass would be a disk
+/// hit every second for an entire evening.
+private struct IdleLogoCache {
+    static var name: String = ""
+    static var image: NSImage?
+
+    static func image(for fileName: String) -> NSImage? {
+        if fileName == name { return image }
+        name = fileName
+        image = BrandingAssets.url(for: fileName).flatMap { NSImage(contentsOf: $0) }
+        return image
     }
 }
 

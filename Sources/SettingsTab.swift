@@ -190,6 +190,8 @@ private struct BrandingCard: View {
                 set: { c.settingsService.settings.eventTitle = $0 }),
                 help: "Shown on the idle screen and printed in the strip footer.")
 
+            idleLogoRow
+
             field("Idle headline", text: Binding(
                 get: { c.settingsService.settings.idleHeadline },
                 set: { c.settingsService.settings.idleHeadline = $0 }))
@@ -270,6 +272,82 @@ private struct BrandingCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .disabled(!c.settings.footerEnabled)
+    }
+
+    private var hasIdleLogo: Bool { BrandingAssets.url(for: c.settings.idleLogoFile) != nil }
+
+    /// The mark the guest screen opens on.
+    ///
+    /// White-on-transparent artwork is what suits it: the idle screen is black,
+    /// or a live picture, and a logo drawn for white paper disappears into both.
+    @ViewBuilder
+    private var idleLogoRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Idle logo").font(.system(size: 12, weight: .medium))
+
+            if hasIdleLogo, let u = BrandingAssets.url(for: c.settings.idleLogoFile),
+               let img = NSImage(contentsOf: u) {
+                Image(nsImage: img)
+                    .resizable().scaledToFit()
+                    .frame(maxWidth: 220, maxHeight: 54)
+                    .padding(8)
+                    // Shown on black, because that is where it has to work.
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: Palette.smallRadius))
+            }
+
+            HStack(spacing: 8) {
+                Button(hasIdleLogo ? "Replace Logo…" : "Choose Logo…") { chooseIdleLogo() }
+                if hasIdleLogo {
+                    Button("Remove") {
+                        let old = c.settingsService.settings.idleLogoFile
+                        c.settingsService.settings.idleLogoFile = ""
+                        BrandingAssets.remove(old)
+                    }
+                }
+            }
+            .font(.system(size: 12))
+
+            if hasIdleLogo {
+                LabeledRow(label: "Logo width",
+                           help: "As a share of the guest screen, so it holds its size on any panel.") {
+                    HStack(spacing: 8) {
+                        Slider(value: Binding(
+                            get: { c.settingsService.settings.idleLogoWidth },
+                            set: { c.settingsService.settings.idleLogoWidth = $0 }),
+                            in: 0.15...0.9)
+                            .frame(width: 120)
+                        Text("\(Int(c.settings.idleLogoWidth * 100))%")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Palette.textDim)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+            }
+
+            Text(hasIdleLogo
+                 ? "Shown on the idle screen in place of the event title."
+                 : "Optional. Shown on the idle screen in place of the event title. The screen is black or a live picture, so pale artwork on a transparent background reads best.")
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func chooseIdleLogo() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .heic, .image]
+        panel.prompt = "Use Logo"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let previous = c.settingsService.settings.idleLogoFile
+            let name = try BrandingAssets.importImage(from: url)
+            c.settingsService.settings.idleLogoFile = name
+            if previous != name { BrandingAssets.remove(previous) }
+        } catch {
+            c.show(.warning, error.localizedDescription)
+        }
     }
 
     private func chooseFooterImage() {

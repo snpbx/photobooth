@@ -165,6 +165,13 @@ exposed for its flash, so what a guest sees while framing can be far darker than
 the photograph that comes out. The lift is on that screen alone: the file, the
 print, the console's own preview and the camera's settings are untouched.
 
+**An idle logo** can stand in for the event title on the guest screen: imported
+through Settings → Branding, copied into the app's own folder like the footer
+artwork, and drawn at its own proportions to whatever share of the screen width
+the operator sets. The idle screen is black or a live picture, so pale artwork on
+a transparent background is what suits it. Without one, the event title is shown
+as before.
+
 The guest viewfinder carries the OSD a camcorder would — `● REC` and a running
 timecode top-left, shot counter and layout top-right, `18:43 / 21.08.2026 FRI`
 bottom-left, event name and an `SP` tape gauge bottom-right that empties as the
