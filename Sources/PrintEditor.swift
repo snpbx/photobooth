@@ -42,6 +42,12 @@ enum PlacementUnit: String, CaseIterable, Identifiable {
     }
 }
 
+/// The state of a turn in progress.
+private struct TurnDrag {
+    let angle: Double
+    let grab: Double
+}
+
 struct PrintEditorView: View {
     @ObservedObject var c: BoothController
     @ObservedObject var store: TemplateStore
@@ -49,6 +55,9 @@ struct PrintEditorView: View {
     @State private var draft: PrintTemplate
     @State private var selection: String?
     @State private var dragOrigin: NormRect?
+    /// Where a turn started: the item's angle, and the angle of the grab itself,
+    /// so the handle stays under the pointer instead of jumping to it.
+    @State private var turnOrigin: TurnDrag?
     @State private var proof: NSImage?
     @State private var dirty = false
     @State private var unit: PlacementUnit = .percent
@@ -195,12 +204,16 @@ struct PrintEditorView: View {
             }
         }
         .clipped()
+        // Drags are measured here rather than inside each item: a turned item
+        // has turned axes of its own, and a drag read in those would send it off
+        // at the angle it was pinned at.
+        .coordinateSpace(name: Self.sheetSpace)
         .overlay(Rectangle().stroke(Palette.hairline, lineWidth: 1).allowsHitTesting(false))
         .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
     }
 
     private func slotView(_ s: TemplateSlot, sheet: CGSize) -> some View {
-        box(s.rect, sheet: sheet, id: s.id) {
+        box(s.rect, sheet: sheet, id: s.id, rotation: s.rotation) {
             ZStack {
                 RoundedRectangle(cornerRadius: s.cornerRadius * min(s.rect.w * sheet.width,
                                                                    s.rect.h * sheet.height))
@@ -216,7 +229,7 @@ struct PrintEditorView: View {
     }
 
     private func overlayView(_ o: TemplateOverlay, sheet: CGSize) -> some View {
-        box(o.rect, sheet: sheet, id: o.id) {
+        box(o.rect, sheet: sheet, id: o.id, rotation: o.rotation) {
             Group {
                 if let u = BrandingAssets.url(for: o.file), let img = NSImage(contentsOf: u) {
                     Image(nsImage: img).resizable().scaledToFit().opacity(o.opacity)
@@ -232,6 +245,7 @@ struct PrintEditorView: View {
 
     /// One positioned, draggable, resizable thing on the sheet.
     private func box<V: View>(_ rect: NormRect, sheet: CGSize, id: String,
+                              rotation: Double = 0,
                               @ViewBuilder content: () -> V) -> some View {
         let r = rect.rect(in: sheet)
         let selected = selection == id
@@ -242,6 +256,20 @@ struct PrintEditorView: View {
                 if selected {
                     Rectangle().stroke(Palette.ink, lineWidth: 2)
                         .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if selected && id != "qr" {
+                    ZStack {
+                        Rectangle().fill(Palette.ink)
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Palette.paper)
+                    }
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+                    .gesture(turnGesture(id: id, sheet: sheet))
+                    .help("Drag to turn. It settles on multiples of 15°.")
                 }
             }
             .overlay(alignment: .bottomTrailing) {
@@ -271,11 +299,18 @@ struct PrintEditorView: View {
             // hit area the size of the page and whichever drew last swallowed
             // every drag, which is why individual shots could not be moved.
             // `offset` carries the frame and its hit testing together.
+            //
+            // The turn goes on before the offset so it happens about the item's
+            // own centre; SwiftUI turns hit testing with it, so a sticker pinned
+            // at an angle is grabbed where it is drawn.
+            .rotationEffect(.degrees(rotation))
             .offset(x: r.minX, y: r.minY)
     }
 
+    private static let sheetSpace = "sheet"
+
     private func moveGesture(id: String, sheet: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named(Self.sheetSpace))
             .onChanged { v in
                 selection = id
                 if dragOrigin == nil { dragOrigin = rect(of: id) }
@@ -289,16 +324,48 @@ struct PrintEditorView: View {
     }
 
     private func resizeGesture(id: String, sheet: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.sheetSpace))
             .onChanged { v in
                 if dragOrigin == nil { dragOrigin = rect(of: id) }
                 guard var r = dragOrigin else { return }
-                r.w += v.translation.width / sheet.width
-                r.h += v.translation.height / sheet.height
+                // The handle is dragged across the sheet, but width and height
+                // belong to the item, so the movement is read back onto the
+                // item's own axes before it counts as a size.
+                let d = unturn(v.translation, by: rotation(of: id))
+                r.w += d.width / sheet.width
+                r.h += d.height / sheet.height
                 r.clamp()
                 setRect(r, of: id)
             }
             .onEnded { _ in dragOrigin = nil; dirty = true }
+    }
+
+    /// Turning by hand: the angle is taken from the line between the item's
+    /// centre and the pointer, which is how a turn handle is expected to
+    /// behave — the handle follows the hand rather than leading it.
+    private func turnGesture(id: String, sheet: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.sheetSpace))
+            .onChanged { v in
+                selection = id
+                guard let r = rect(of: id) else { return }
+                let centre = CGPoint(x: (r.x + r.w / 2) * sheet.width,
+                                     y: (r.y + r.h / 2) * sheet.height)
+                func angle(_ p: CGPoint) -> Double {
+                    Double(atan2(p.y - centre.y, p.x - centre.x)) * 180 / .pi
+                }
+                if turnOrigin == nil {
+                    turnOrigin = TurnDrag(angle: rotation(of: id), grab: angle(v.startLocation))
+                }
+                guard let o = turnOrigin else { return }
+                var a = o.angle + (angle(v.location) - o.grab)
+                // Settles on the angles somebody actually wants — square, or a
+                // deliberate tilt — without stopping them choosing 7°.
+                let step = 15.0
+                let nearest = (a / step).rounded() * step
+                if abs(a - nearest) < 3 { a = nearest }
+                setRotation(a, of: id)
+            }
+            .onEnded { _ in turnOrigin = nil; dirty = true }
     }
 
     // MARK: - Inspector
@@ -458,6 +525,10 @@ struct PrintEditorView: View {
     }
 
     /// Exact placement, for when a drag is not precise enough — or not possible.
+    ///
+    /// The guest code is placed but never turned: it is drawn square inside its
+    /// box, and a turned code would only make it harder for a phone to read.
+    @ViewBuilder
     private func rectControls(_ id: String) -> some View {
         Group {
             LabeledRow(label: "Measure in",
@@ -474,6 +545,43 @@ struct PrintEditorView: View {
             placementRow("Down",   id: id, key: \.y, axis: .vertical)
             placementRow("Width",  id: id, key: \.w, axis: .horizontal)
             placementRow("Height", id: id, key: \.h, axis: .vertical)
+
+            if id != "qr" {
+            LabeledRow(label: "Turn",
+                       help: "Degrees clockwise about the middle. The measurements above stay with the upright rectangle, so turning something never moves it — and a turned corner can hang past the paper's edge, which the proof sheet will show.") {
+                HStack(spacing: 6) {
+                    TextField("", value: Binding<Double>(
+                        get: { self.rotation(of: id) },
+                        set: { self.setRotation($0, of: id) }),
+                        format: .number.precision(.fractionLength(0...1)))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                        .multilineTextAlignment(.trailing)
+                    Text("°")
+                        .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                        .frame(width: 20, alignment: .leading)
+                    StepPad(symbol: "minus", side: 40) {
+                        self.setRotation(self.rotation(of: id) - 5, of: id)
+                    }
+                    StepPad(symbol: "plus", side: 40) {
+                        self.setRotation(self.rotation(of: id) + 5, of: id)
+                    }
+                }
+            }
+
+            LabeledRow(label: "Quarter turns") {
+                HStack(spacing: 8) {
+                    Button("Left") { setRotation(rotation(of: id) - 90, of: id) }
+                        .buttonStyle(QuietButtonStyle())
+                    Button("Right") { setRotation(rotation(of: id) + 90, of: id) }
+                        .buttonStyle(QuietButtonStyle())
+                    Button("Straight") { setRotation(0, of: id) }
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(rotation(of: id) == 0)
+                }
+            }
+
+            }
 
             LabeledRow(label: "Centre") {
                 HStack(spacing: 8) {
@@ -645,6 +753,28 @@ struct PrintEditorView: View {
         if let o = draft.overlays.first(where: { $0.id == id }) { return o.rect }
         if id == "qr" { return draft.qr }
         return nil
+    }
+
+    private func rotation(of id: String) -> Double {
+        if let s = draft.slots.first(where: { $0.id == id }) { return s.rotation }
+        if let o = draft.overlays.first(where: { $0.id == id }) { return o.rotation }
+        return 0
+    }
+
+    private func setRotation(_ degrees: Double, of id: String) {
+        let d = normalisedAngle(degrees)
+        if let i = draft.slots.firstIndex(where: { $0.id == id }) { draft.slots[i].rotation = d }
+        if let i = draft.overlays.firstIndex(where: { $0.id == id }) { draft.overlays[i].rotation = d }
+        dirty = true
+    }
+
+    /// A movement across the sheet, expressed in the axes of something turned
+    /// by `degrees` — the inverse turn.
+    private func unturn(_ t: CGSize, by degrees: Double) -> CGSize {
+        guard degrees != 0 else { return t }
+        let a = -degrees * .pi / 180
+        return CGSize(width:  t.width * cos(a) - t.height * sin(a),
+                      height: t.width * sin(a) + t.height * cos(a))
     }
 
     private func setRect(_ r: NormRect, of id: String) {

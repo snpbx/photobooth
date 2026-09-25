@@ -70,6 +70,10 @@ struct TemplateSlot: Codable, Identifiable, Hashable {
     /// with the slot rather than looking heavier as the slot gets smaller.
     var cornerRadius: Double = 0.04
     var cropMode: CropMode = .fill
+    /// Degrees clockwise about the slot's own centre. The rectangle stored in
+    /// `rect` is the unturned one, so turning something never moves it and
+    /// straightening it needs no second nudge.
+    var rotation: Double = 0
 }
 
 /// A logo, sticker or frame laid over the sheet.
@@ -83,6 +87,53 @@ struct TemplateOverlay: Codable, Identifiable, Hashable {
     /// Drawn after the photographs, in array order. Moving an overlay up or down
     /// the array is what "bring forward" and "send back" do.
     var behindPhotos: Bool = false
+    /// Degrees clockwise about the image's own centre — a sticker pinned on at
+    /// an angle, a logo set square.
+    var rotation: Double = 0
+}
+
+// MARK: - Lenient decoding
+//
+// Swift's synthesised decoder treats a missing key as an error even when the
+// property has a default, so the day a field is added every layout saved before
+// it stops decoding — and a store that cannot decode its file comes up empty.
+// Losing an operator's library to a new field is not a trade worth making, so
+// both of these are decoded by hand. They live in extensions to keep the
+// memberwise initialiser the rest of the app builds them with.
+
+extension TemplateSlot {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        id           = try c.decodeIfPresent(String.self,   forKey: .id)           ?? id
+        rect         = try c.decodeIfPresent(NormRect.self, forKey: .rect)         ?? rect
+        photoIndex   = try c.decodeIfPresent(Int.self,      forKey: .photoIndex)   ?? photoIndex
+        cornerRadius = try c.decodeIfPresent(Double.self,   forKey: .cornerRadius) ?? cornerRadius
+        cropMode     = try c.decodeIfPresent(CropMode.self, forKey: .cropMode)     ?? cropMode
+        rotation     = try c.decodeIfPresent(Double.self,   forKey: .rotation)     ?? rotation
+    }
+}
+
+extension TemplateOverlay {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        id           = try c.decodeIfPresent(String.self,   forKey: .id)           ?? id
+        file         = try c.decodeIfPresent(String.self,   forKey: .file)         ?? file
+        rect         = try c.decodeIfPresent(NormRect.self, forKey: .rect)         ?? rect
+        opacity      = try c.decodeIfPresent(Double.self,   forKey: .opacity)      ?? opacity
+        behindPhotos = try c.decodeIfPresent(Bool.self,     forKey: .behindPhotos) ?? behindPhotos
+        rotation     = try c.decodeIfPresent(Double.self,   forKey: .rotation)     ?? rotation
+    }
+}
+
+/// Degrees, wrapped into (-180, 180] so "turn left" from straight reads as -90
+/// rather than 270, and two layouts that look identical compare equal.
+func normalisedAngle(_ degrees: Double) -> Double {
+    var d = degrees.truncatingRemainder(dividingBy: 360)
+    if d > 180 { d -= 360 }
+    if d <= -180 { d += 360 }
+    return d == 0 ? 0 : d   // keeps -0 out of the file
 }
 
 struct TemplateBorder: Codable, Hashable {

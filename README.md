@@ -35,6 +35,9 @@ photographs stay segregated on disk rather than piling into one folder. Sessions
 cannot start without an event selected, and the Start button carries the client's
 name.
 
+**Turned slots and stickers** — anything on a print layout can be set at an
+angle, by dragging its handle or typing the degrees.
+
 **Session pages and per-photo codes** — every session gets its own webpage,
 styled after Glyphy, with its link in the admin; every photograph gets its own code
 on the finish screen. Photographs live on Cloudinary, the pages on GitHub Pages.
@@ -495,6 +498,22 @@ way of writing down the same stored fractions, so switching units changes nothin
 about the sheet. Nudges are a percent, ten pixels or a twentieth of an inch; one
 pixel at 300 DPI is a third of a millimetre, which nobody would see and everybody
 would have to press forty times.
+
+**Anything on the sheet can be turned.** Photo slots, logos and stickers carry
+an angle in degrees clockwise about their own middle: drag the handle at the
+top-left corner of whatever is selected, type the number, or take a quarter turn
+either way. A drag settles on multiples of 15° when it comes within 3° of one, so
+square and a deliberate tilt are both easy to hit and 7° is still available. The
+guest code is the exception — it is placed but never turned, since a turned code
+only makes a phone work harder.
+
+The stored rectangle is always the *upright* one, so turning something never
+moves it and straightening it needs no second nudge. The cost is that a turned
+corner can hang past the edge of the paper, which the proof sheet shows honestly.
+Drags are measured against the sheet rather than the item, because a turned item
+has turned axes of its own and a drag read in those would send it off at the
+angle it was pinned at; the resize handle does the opposite, reading the movement
+back onto the item's own axes so width stays width.
 
 Two things the editor does deliberately:
 

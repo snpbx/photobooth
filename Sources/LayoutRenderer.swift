@@ -243,6 +243,7 @@ enum LayoutRenderer {
                     guard !o.file.isEmpty, let img = overlayImage(o.file) else { continue }
                     let r = flip(o.rect.rect(in: canvas), canvasH: canvas.height)
                     ctx.saveGState()
+                    turn(ctx, o.rotation, about: r)
                     ctx.setAlpha(max(0, min(o.opacity, 1)))
                     ctx.interpolationQuality = .high
                     // Aspect-fit: a logo squashed to fill its box is worse than a
@@ -263,11 +264,12 @@ enum LayoutRenderer {
                 let rect = slot.rect.rect(in: canvas)
                 let radius = slot.cornerRadius * min(rect.width, rect.height)
                 guard slot.photoIndex < images.count, let img = images[slot.photoIndex] else {
-                    drawPlaceholder(ctx, rect: rect, canvasH: canvas.height, number: slot.photoIndex + 1)
+                    drawPlaceholder(ctx, rect: rect, canvasH: canvas.height,
+                                    number: slot.photoIndex + 1, rotation: slot.rotation)
                     continue
                 }
                 drawPhoto(ctx, image: img, in: rect, canvasH: canvas.height,
-                          mode: slot.cropMode, radius: radius)
+                          mode: slot.cropMode, radius: radius, rotation: slot.rotation)
             }
 
             drawOverlays(behind: false)
@@ -396,6 +398,20 @@ enum LayoutRenderer {
         CGRect(x: r.minX, y: canvasH - r.maxY, width: r.width, height: r.height)
     }
 
+    /// Turns everything drawn after it about the centre of `rect`.
+    ///
+    /// Negated because the page is drawn bottom-up: positive degrees mean
+    /// clockwise as the guest holds the print, which is counter-clockwise in a
+    /// context whose y axis points the other way. Callers wrap this in
+    /// save/restore, and the turn has to come before the clip so the clip turns
+    /// with it rather than slicing a straight hole in a turned photograph.
+    private static func turn(_ ctx: CGContext, _ degrees: Double, about rect: CGRect) {
+        guard degrees != 0 else { return }
+        ctx.translateBy(x: rect.midX, y: rect.midY)
+        ctx.rotate(by: -CGFloat(degrees) * .pi / 180)
+        ctx.translateBy(x: -rect.midX, y: -rect.midY)
+    }
+
     private static func roundedPath(_ r: CGRect, radius: CGFloat) -> CGPath {
         let rad = min(radius, min(r.width, r.height) / 2)
         return CGPath(roundedRect: r, cornerWidth: rad, cornerHeight: rad, transform: nil)
@@ -406,9 +422,11 @@ enum LayoutRenderer {
                                   in topLeftRect: CGRect,
                                   canvasH: CGFloat,
                                   mode: CropMode,
-                                  radius: CGFloat? = nil) {
+                                  radius: CGFloat? = nil,
+                                  rotation: Double = 0) {
         let rect = flip(topLeftRect, canvasH: canvasH)
         ctx.saveGState()
+        turn(ctx, rotation, about: rect)
         ctx.addPath(roundedPath(rect, radius: radius ?? cornerRadius))
         ctx.clip()
 
@@ -437,9 +455,11 @@ enum LayoutRenderer {
         }
     }
 
-    private static func drawPlaceholder(_ ctx: CGContext, rect: CGRect, canvasH: CGFloat, number: Int) {
+    private static func drawPlaceholder(_ ctx: CGContext, rect: CGRect, canvasH: CGFloat,
+                                        number: Int, rotation: Double = 0) {
         let r = flip(rect, canvasH: canvasH)
         ctx.saveGState()
+        turn(ctx, rotation, about: r)
         ctx.addPath(roundedPath(r, radius: cornerRadius))
         ctx.setFillColor(CGColor(gray: 0.90, alpha: 1))
         ctx.fillPath()
