@@ -70,6 +70,15 @@ final class BoothController: ObservableObject {
     private var motionLastAccepted = Date.distantPast
     @Published var banner: BannerMessage?
     @Published private(set) var detectedCameras: [String] = []
+    /// What the camera body currently reports — ISO, aperture and the rest.
+    /// Empty until something asks for it: reading them costs a USB round trip
+    /// per setting, which is not worth paying on every console redraw.
+    @Published private(set) var cameraSettings: [CameraSetting] = []
+    @Published private(set) var cameraSettingsLoading = false
+    /// The setting being written, so its own control can show the wait rather
+    /// than freezing the whole card.
+    @Published private(set) var cameraSettingBusy: String?
+    @Published private(set) var cameraSettingsError: String?
     @Published private(set) var isPrintBusy = false
     /// Shot numbers the operator has marked for a retake, by clicking their
     /// number in Admin. Drained after the run, before the print is built.
@@ -424,6 +433,7 @@ final class BoothController: ObservableObject {
         made.onState = { [weak self] s in
             guard let self else { return }
             self.cameraState = s
+            if case .disconnected = s { self.cameraSettings = [] }
             if case .disconnected = s, self.state.isSessionActive {
                 self.abortSession(reason: "The camera was disconnected.")
             }
@@ -439,6 +449,8 @@ final class BoothController: ObservableObject {
         camera = made
         activeBackend = backend
         detectedCameras = []
+        cameraSettings = []
+        cameraSettingsError = nil
         log.info("Camera backend set to \(backend.title)")
         made.connect()
         refreshDetectedCameras()
@@ -489,6 +501,56 @@ final class BoothController: ObservableObject {
             detectedCameras = ["Generated test pattern"]
         case .none:
             detectedCameras = []
+        }
+    }
+
+    // MARK: Settings on the camera body
+
+    /// Asks the camera what it is set to. Safe to call when there is no camera:
+    /// the backends that have nothing to say answer with an empty list.
+    func refreshCameraSettings() {
+        guard !cameraSettingsLoading else { return }
+        guard let camera, cameraState.isReady else {
+            cameraSettings = []
+            cameraSettingsError = activeBackend == .dslr
+                ? "Connect the camera to see its settings."
+                : nil
+            return
+        }
+        cameraSettingsLoading = true
+        camera.readSettings { [weak self] found in
+            guard let self else { return }
+            self.cameraSettingsLoading = false
+            self.cameraSettings = found
+            self.cameraSettingsError = found.isEmpty && self.activeBackend == .dslr
+                ? "The camera did not offer any settings. Take it off a fully automatic mode and try again."
+                : nil
+        }
+    }
+
+    /// Writes one setting to the body, then re-reads everything: on a Canon the
+    /// settings move together — drop to f/1.8 in Av and the shutter speed the
+    /// camera reports changes with it — so showing only the edited one would be
+    /// showing a lie.
+    func setCameraSetting(_ name: String, to value: String) {
+        guard let camera else { return }
+        guard !state.isSessionActive else {
+            show(.warning, "Wait until the session has finished.")
+            return
+        }
+        cameraSettingBusy = name
+        camera.writeSetting(name, to: value) { [weak self] error in
+            guard let self else { return }
+            self.cameraSettingBusy = nil
+            if let error {
+                self.cameraSettingsError = error
+                self.show(.warning, error)
+                // Put the control back to what the body actually holds.
+                self.refreshCameraSettings()
+            } else {
+                self.cameraSettingsError = nil
+                self.refreshCameraSettings()
+            }
         }
     }
 

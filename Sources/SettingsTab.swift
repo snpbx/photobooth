@@ -15,6 +15,7 @@ struct SettingsTab: View {
                         AnyView(BrandingCard(c: c)),
                         AnyView(PrintQualityCard(c: c)),
                         AnyView(CameraAdvancedCard(c: c)),
+                        AnyView(CameraBodyCard(c: c)),
                         AnyView(GuestQRCard(c: c)),
                         AnyView(InterfaceCard(c: c)),
                         AnyView(MaintenanceCard(c: c, confirmReset: $confirmReset))
@@ -495,6 +496,98 @@ private struct CameraAdvancedCard: View {
             Text(s).font(.system(size: 11)).foregroundStyle(Palette.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// ISO, aperture and the rest, read from the camera itself.
+///
+/// Every row here is whatever the body offered when it was last asked — nothing
+/// is stored in our settings file. A setting the camera will not hand over
+/// (shutter speed with the dial on Av, everything at all in a green-square mode)
+/// is shown as it stands and cannot be picked, because pretending otherwise
+/// would let the operator set something the camera quietly ignores.
+private struct CameraBodyCard: View {
+    @ObservedObject var c: BoothController
+
+    var body: some View {
+        SectionCard(title: "Camera Settings", accessory: AnyView(refreshButton)) {
+            if c.settings.cameraBackend != .dslr {
+                Text("Switch the camera to the Canon over USB to edit its settings.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !c.cameraState.isReady {
+                Text("Connect the camera to read its settings.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if c.cameraSettings.isEmpty {
+                Text(c.cameraSettingsLoading
+                     ? "Reading the camera…"
+                     : (c.cameraSettingsError ?? "Press Read to ask the camera what it is set to."))
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(c.cameraSettings) { setting in
+                    row(setting)
+                }
+                if let err = c.cameraSettingsError {
+                    Text(err).font(.system(size: 11)).foregroundStyle(Palette.statusWarn)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider().opacity(0.4)
+                Text("Changes go straight to the camera and stay on it — they are not part of the booth's own settings, and they survive a restart of this app but not a change made on the body itself.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear { c.refreshCameraSettings() }
+    }
+
+    private var refreshButton: some View {
+        Button(c.cameraSettingsLoading ? "Reading…" : "Read") { c.refreshCameraSettings() }
+            .buttonStyle(QuietButtonStyle())
+            // QuietButtonStyle stretches by design; in a card header it would
+            // otherwise take the whole width from the title.
+            .fixedSize()
+            .disabled(c.cameraSettingsLoading || c.settings.cameraBackend != .dslr)
+    }
+
+    @ViewBuilder
+    private func row(_ s: CameraSetting) -> some View {
+        LabeledRow(label: s.label, help: help(for: s)) {
+            if s.choices.isEmpty || s.readOnly {
+                Text(s.value.isEmpty ? "—" : s.value)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Palette.textDim)
+            } else {
+                Picker("", selection: Binding(
+                    get: { s.value },
+                    set: { picked in
+                        guard picked != s.value else { return }
+                        c.setCameraSetting(s.name, to: picked)
+                    })) {
+                        // The camera's current value may not be among its own
+                        // choices — Canon reports "Unknown" mid-change — and a
+                        // Picker with no match shows blank, so it is added.
+                        if !s.choices.contains(s.value) {
+                            Text(s.value.isEmpty ? "—" : s.value).tag(s.value)
+                        }
+                        ForEach(s.choices, id: \.self) { choice in
+                            Text(choice).tag(choice)
+                        }
+                }
+                .labelsHidden()
+                .frame(width: 180)
+                .disabled(c.cameraSettingBusy != nil || c.state.isSessionActive)
+            }
+        }
+    }
+
+    private func help(for s: CameraSetting) -> String? {
+        if c.cameraSettingBusy == s.name { return "Setting the camera…" }
+        if s.readOnly {
+            return "The camera decides this one. Change the mode dial or the body's own menu to free it."
+        }
+        return nil
     }
 }
 

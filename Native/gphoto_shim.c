@@ -122,6 +122,131 @@ int gpshim_capture(unsigned char **out, unsigned long *len) {
     return 0;
 }
 
+// MARK: - Camera settings
+//
+// One widget at a time through gp_camera_{get,set}_single_config: on a Canon
+// the whole-config round trip is slow enough to be felt between shots, and
+// writing back a config tree read minutes ago would push stale values the
+// operator had since changed on the body itself.
+
+static void append_choices(CameraWidget *w, char *out, int cap, int *used) {
+    int n = gp_widget_count_choices(w);
+    for (int i = 0; i < n; i++) {
+        const char *ch = NULL;
+        if (gp_widget_get_choice(w, i, &ch) < GP_OK || !ch) continue;
+        int wrote = snprintf(out + *used, (size_t)(cap - *used), "%s%s", i ? "|" : "", ch);
+        if (wrote < 0 || wrote >= cap - *used) return;
+        *used += wrote;
+    }
+}
+
+/// The widget's current value as text, whatever its type. Returns 0 on success.
+static int widget_value(CameraWidget *w, CameraWidgetType type, char *buf, size_t cap) {
+    if (type == GP_WIDGET_TOGGLE) {
+        int v = 0;
+        if (gp_widget_get_value(w, &v) < GP_OK) return -1;
+        snprintf(buf, cap, "%s", v ? "1" : "0");
+        return 0;
+    }
+    if (type == GP_WIDGET_RANGE) {
+        float v = 0;
+        if (gp_widget_get_value(w, &v) < GP_OK) return -1;
+        snprintf(buf, cap, "%g", v);
+        return 0;
+    }
+    const char *s = NULL;
+    if (gp_widget_get_value(w, &s) < GP_OK) return -1;
+    snprintf(buf, cap, "%s", s ? s : "");
+    return 0;
+}
+
+int gpshim_config_read(const char *names, char *out, int cap) {
+    if (cap > 0) out[0] = '\0';
+    if (!g_cam) { snprintf(g_err, sizeof(g_err), "not connected"); return -1; }
+    if (!names || cap <= 1) return 0;
+
+    int used = 0, rows = 0;
+    const char *p = names;
+    while (*p) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        char name[64];
+        if (len > 0 && len < sizeof(name)) {
+            memcpy(name, p, len);
+            name[len] = '\0';
+
+            CameraWidget *w = NULL;
+            if (gp_camera_get_single_config(g_cam, name, &w, g_ctx) == GP_OK && w) {
+                CameraWidgetType type;
+                const char *label = NULL;
+                int readonly = 0;
+                char value[128] = "";
+                gp_widget_get_type(w, &type);
+                gp_widget_get_label(w, &label);
+                gp_widget_get_readonly(w, &readonly);
+
+                if (widget_value(w, type, value, sizeof(value)) == 0) {
+                    int wrote = snprintf(out + used, (size_t)(cap - used), "%s\t%s\t%s\t%d\t",
+                                         name, label ? label : name, value, readonly ? 1 : 0);
+                    if (wrote > 0 && wrote < cap - used) {
+                        used += wrote;
+                        if (type == GP_WIDGET_RADIO || type == GP_WIDGET_MENU) {
+                            append_choices(w, out, cap, &used);
+                        }
+                        if (used < cap - 1) { out[used++] = '\n'; out[used] = '\0'; rows++; }
+                    } else {
+                        out[used] = '\0';   // no room — stop cleanly rather than truncate a row
+                        gp_widget_free(w);
+                        break;
+                    }
+                }
+                gp_widget_free(w);
+            }
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    g_err[0] = '\0';
+    return rows;
+}
+
+int gpshim_config_write(const char *name, const char *value) {
+    if (!g_cam) { snprintf(g_err, sizeof(g_err), "not connected"); return -1; }
+    if (!name || !value) { snprintf(g_err, sizeof(g_err), "no setting given"); return -1; }
+
+    CameraWidget *w = NULL;
+    int r = gp_camera_get_single_config(g_cam, name, &w, g_ctx);
+    if (r < GP_OK || !w) { set_err("get_config", r < GP_OK ? r : GP_ERROR); return -1; }
+
+    CameraWidgetType type;
+    gp_widget_get_type(w, &type);
+
+    int readonly = 0;
+    gp_widget_get_readonly(w, &readonly);
+    if (readonly) {
+        snprintf(g_err, sizeof(g_err), "the camera will not let this be set from here");
+        gp_widget_free(w);
+        return -1;
+    }
+
+    if (type == GP_WIDGET_TOGGLE) {
+        int v = (value[0] == '1');
+        r = gp_widget_set_value(w, &v);
+    } else if (type == GP_WIDGET_RANGE) {
+        float v = (float)atof(value);
+        r = gp_widget_set_value(w, &v);
+    } else {
+        r = gp_widget_set_value(w, value);
+    }
+    if (r < GP_OK) { set_err("set_value", r); gp_widget_free(w); return -1; }
+
+    r = gp_camera_set_single_config(g_cam, name, w, g_ctx);
+    gp_widget_free(w);
+    if (r < GP_OK) { set_err("set_config", r); return -1; }
+    g_err[0] = '\0';
+    return 0;
+}
+
 int gpshim_delete_last(void) {
     if (!g_cam || !g_has_last) return -1;
     int r = gp_camera_file_delete(g_cam, g_last_path.folder, g_last_path.name, g_ctx);

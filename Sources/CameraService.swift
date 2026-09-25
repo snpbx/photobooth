@@ -19,6 +19,25 @@ enum CameraError: LocalizedError {
     }
 }
 
+/// One setting on the camera body, as libgphoto2 sees it.
+///
+/// `name` is gphoto2's own name (`iso`, `shutterspeed`) rather than anything of
+/// ours: it is what a setting is written back under, it is stable across
+/// firmware, and it is what a search for a stuck setting will turn up.
+struct CameraSetting: Identifiable, Hashable {
+    let name: String
+    /// The camera's own label — "ISO Speed", not our translation of it.
+    let label: String
+    let value: String
+    /// Empty when the camera offers free text or a number rather than a list.
+    let choices: [String]
+    /// True for settings the body decides itself — with the mode dial on Av the
+    /// 6D reports shutter speed this way, and refuses to be told otherwise.
+    let readOnly: Bool
+
+    var id: String { name }
+}
+
 /// Everything the rest of the app is allowed to know about a camera.
 /// Both the Canon USB backend and the webcam backend implement this, so the
 /// hardware layer can be swapped without touching the workflow or the UI.
@@ -34,6 +53,22 @@ protocol CameraBackendService: AnyObject {
     func capturePhoto() async throws -> Data
     /// Called once the JPEG is safely on disk, so the backend can clean up the card.
     func didPersistLastCapture()
+
+    /// The settings the body will talk about, in the order they should be shown.
+    func readSettings(completion: @escaping ([CameraSetting]) -> Void)
+    /// Changes one setting. The completion carries nil on success, or the reason.
+    func writeSetting(_ name: String, to value: String, completion: @escaping (String?) -> Void)
+}
+
+/// Only the DSLR has settings worth editing: a webcam's exposure belongs to
+/// macOS, and the demo backend has no hardware at all. They inherit these.
+extension CameraBackendService {
+    func readSettings(completion: @escaping ([CameraSetting]) -> Void) {
+        DispatchQueue.main.async { completion([]) }
+    }
+    func writeSetting(_ name: String, to value: String, completion: @escaping (String?) -> Void) {
+        DispatchQueue.main.async { completion("This camera's settings cannot be changed from here.") }
+    }
 }
 
 // MARK: - Canon DSLR over USB (libgphoto2)
@@ -221,6 +256,71 @@ final class DSLRCameraService: CameraBackendService, @unchecked Sendable {
     func didPersistLastCapture() {
         guard deleteAfterPersist else { return }
         queue.async { _ = gpshim_delete_last() }
+    }
+
+    // MARK: Settings on the body
+
+    /// What the card offers, in the order an operator reaches for them: the
+    /// exposure triangle first, then the things set once at the start of a
+    /// night. Anything the body does not have is skipped, so this same list
+    /// works on a 6D, a 5D or a Rebel.
+    static let settingNames = [
+        "iso", "aperture", "shutterspeed", "exposurecompensation",
+        "whitebalance", "colortemperature", "imageformat", "picturestyle",
+        "autoexposuremode", "focusmode", "drivemode", "colorspace",
+        "meteringmode", "capturetarget"
+    ]
+
+    func readSettings(completion: @escaping ([CameraSetting]) -> Void) {
+        queue.async { [weak self] in
+            guard let self, self.connected else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            // Room for every choice the longest list can hold — a Canon's
+            // shutter speeds alone run to sixty-odd entries.
+            var buf = [CChar](repeating: 0, count: 65536)
+            let rows = gpshim_config_read(Self.settingNames.joined(separator: "\n"),
+                                          &buf, Int32(buf.count))
+            guard rows > 0 else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            let found = String(cString: buf).split(separator: "\n").compactMap { line -> CameraSetting? in
+                let f = line.components(separatedBy: "\t")
+                guard f.count >= 5 else { return nil }
+                let choices = f[4].isEmpty ? [] : f[4].components(separatedBy: "|")
+                return CameraSetting(name: f[0], label: f[1], value: f[2],
+                                     choices: choices, readOnly: f[3] == "1")
+            }
+            // Back into our own order: the camera answers in whatever order it
+            // was asked, but a body that lacks one leaves a gap.
+            let order = Dictionary(uniqueKeysWithValues: Self.settingNames.enumerated().map { ($1, $0) })
+            let sorted = found.sorted { (order[$0.name] ?? 99) < (order[$1.name] ?? 99) }
+            DispatchQueue.main.async { completion(sorted) }
+        }
+    }
+
+    func writeSetting(_ name: String, to value: String, completion: @escaping (String?) -> Void) {
+        queue.async { [weak self] in
+            guard let self, self.connected else {
+                DispatchQueue.main.async { completion("The camera is not connected.") }
+                return
+            }
+            guard !self.capturing else {
+                DispatchQueue.main.async { completion("The camera is taking a photograph.") }
+                return
+            }
+            let r = gpshim_config_write(name, value)
+            if r < 0 {
+                let msg = String(cString: gpshim_last_error())
+                Log.shared.warn("Could not set \(name) to \(value): \(msg)")
+                DispatchQueue.main.async { completion(Self.friendlyError(msg)) }
+            } else {
+                Log.shared.info("Camera \(name) set to \(value)")
+                DispatchQueue.main.async { completion(nil) }
+            }
+        }
     }
 
     // MARK: Watchdog — notices an unplugged cable within a couple of seconds

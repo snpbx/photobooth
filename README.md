@@ -26,6 +26,10 @@ photographs, frame the lot with a border, and put the guest code where it suits.
 **A layout belongs to an event**, so a wedding and the corporate night after it
 print completely different sheets with nothing switched over between them.
 
+**Camera settings from the console** — ISO, aperture, shutter speed, white
+balance and the rest of the Canon's own settings are read from the body and can
+be changed in the admin, without touching the camera.
+
 **Events** — every session belongs to one client booking, so a night's
 photographs stay segregated on disk rather than piling into one folder. Sessions
 cannot start without an event selected, and the Start button carries the client's
@@ -81,6 +85,16 @@ supported route for Canon PTP bodies on macOS and needs no Canon SDK licence.
 `main.swift` points `CAMLIBS`/`IOLIBS` at the bundled drivers before the first
 gphoto call. macOS claims PTP cameras with its own daemon, so the DSLR backend
 releases `PTPCamera`/`ptpcamerad` before initialising.
+
+**Camera settings** — Settings → *Camera Settings* reads ISO, aperture, shutter
+speed, exposure compensation, white balance, image format and the rest straight
+off the body through `gp_camera_get_single_config`, and writes a change back the
+same way. Nothing is stored in the booth's settings file: the camera holds these,
+and the card only ever shows what it last reported. Settings the body decides for
+itself — shutter speed with the dial on Av, or anything at all in a fully
+automatic mode — are shown as plain text and cannot be picked, because setting
+them would be ignored. A write is refused during a session, and the whole list is
+re-read after every change, since on a Canon the exposure settings move together.
 
 **Printer** — prints go through the macOS print system (CUPS) via `lp`, which
 gives a trackable job id and access to the CP1500's `Postcard.Fullbleed` media.
