@@ -62,12 +62,6 @@ final class BoothController: ObservableObject {
     /// the moment they arrive. Holding three seconds of 960px preview for eight
     /// shots would be hundreds of megabytes of pixels that are about to be
     /// thrown away; at cell size the same buffer is a few tens.
-    private var motionFrames: [Int: [CGImage]] = [:]
-    private var motionShot: Int?
-    private var motionFrameSize = CGSize(width: 320, height: 240)
-    private var motionCap = 30
-    private var motionInterval: TimeInterval = 0.1
-    private var motionLastAccepted = Date.distantPast
     @Published var banner: BannerMessage?
     @Published private(set) var detectedCameras: [String] = []
     /// What the camera body currently reports — ISO, aperture and the rest.
@@ -175,6 +169,26 @@ final class BoothController: ObservableObject {
     /// asked for eight.
     private(set) var plannedShots: Int = 0
 
+    /// Sheets this event has actually printed, and how many are still in the
+    /// printer's queue.
+    ///
+    /// Counted in sheets rather than sessions, because copies are what empties a
+    /// paper cartridge: a session set to two copies takes two out of the pack of
+    /// fifty-four the operator has to get through the night on.
+    func printCounts(forEvent eventID: String) -> (printed: Int, pending: Int, failed: Int) {
+        var printed = 0, pending = 0, failed = 0
+        for s in storage.sessions where s.eventID == eventID {
+            let sheets = max(1, s.copies)
+            switch s.printStatus {
+            case .printed:            printed += sheets
+            case .queued, .printing:  pending += sheets
+            case .failed:             failed += sheets
+            case .notPrinted:         break
+            }
+        }
+        return (printed, pending, failed)
+    }
+
     /// Photographs a session needs — the template's, when one is in use.
     var templateShotCount: Int? {
         guard let t = activeTemplate, !t.slots.isEmpty else { return nil }
@@ -234,6 +248,14 @@ final class BoothController: ObservableObject {
                 self?.objectWillChange.send()
                 self?.applySettings(new)
             }
+            .store(in: &cancels)
+
+        // A sheet is only counted once it has actually come out. CUPS is the
+        // only thing that knows: the session is marked queued when `lp` takes
+        // it, and stays that way for ever unless somebody watches the job.
+        printer.$jobs
+            .removeDuplicates()
+            .sink { [weak self] jobs in self?.reconcilePrintJobs(jobs) }
             .store(in: &cancels)
 
         wireUploader()
@@ -323,6 +345,9 @@ final class BoothController: ObservableObject {
                 if case .complete = self.state, self.photoQRs.isEmpty {
                     self.photoQRs = self.makePhotoQRs(for: rec)
                 }
+                if case .complete = self.state, self.gifQRImage == nil {
+                    self.gifQRImage = self.makeGIFQR(for: rec)
+                }
             }
         }
         uploader.publishToPages = { [weak self] eventID, sessionID in
@@ -407,7 +432,10 @@ final class BoothController: ObservableObject {
             cam.setPreferredDevice(new.webcamUniqueID)
             cam.setFPS(new.liveViewFPS)
         }
-        (camera as? DemoCameraService)?.setFPS(new.liveViewFPS)
+        if let demo = camera as? DemoCameraService {
+            demo.setFPS(new.liveViewFPS)
+            demo.setLogo(new.idleLogoFile)
+        }
         updateLiveViewDesire(using: new)
     }
 
@@ -434,7 +462,9 @@ final class BoothController: ObservableObject {
             w.setFPS(settings.liveViewFPS)
             made = w
         case .demo:
-            made = DemoCameraService(fps: settings.liveViewFPS)
+            let d = DemoCameraService(fps: settings.liveViewFPS)
+            d.setLogo(settings.idleLogoFile)
+            made = d
         }
         made.onState = { [weak self] s in
             guard let self else { return }
@@ -450,7 +480,6 @@ final class BoothController: ObservableObject {
         made.onFrame = { [weak self] img in
             guard let self, self.wantsLiveView else { return }
             self.livePreview.set(img)
-            self.recordMotionFrame(img)
         }
         camera = made
         activeBackend = backend
@@ -660,10 +689,9 @@ final class BoothController: ObservableObject {
         currentSession = rec
         sessionPrintImage = nil
         sessionGIF = nil
-        motionFrames.removeAll()
-        motionShot = nil
         sessionQRImage = nil
         photoQRs = []
+        gifQRImage = nil
         shotPreview = nil
         retakeCurrentRequested = false
         retakeQueue = []
@@ -724,9 +752,7 @@ final class BoothController: ObservableObject {
             if Task.isCancelled { return .failed }
         }
 
-        // COUNTDOWN — and the GIF's raw material. Everything the camera shows
-        // between here and the shutter is what that cell will replay.
-        beginMotionCapture(shot: shot)
+        // COUNTDOWN
         var remaining = max(1, settings.countdownSeconds)
         while remaining > 0 {
             if Task.isCancelled { return .failed }
@@ -736,7 +762,6 @@ final class BoothController: ObservableObject {
         }
 
         // CAPTURING
-        endMotionCapture()
         if Task.isCancelled { return .failed }
         state = .capturing(shot: shot, of: total)
         var captured: Data
@@ -821,60 +846,6 @@ final class BoothController: ObservableObject {
         return true
     }
 
-    /// Starts collecting the run-up to one shot. A retake starts the shot over,
-    /// so its previous run-up goes with it.
-    private func beginMotionCapture(shot: Int) {
-        guard GIFRenderer.enabled, settings.makeGIF else { return }
-        let layout = currentSession?.layout ?? settings.layout
-        motionFrameSize = GIFRenderer.motionFrameSize(layout: layout, settings: settings)
-        motionCap = GIFRenderer.frameCount(settings: settings)
-        motionInterval = 1.0 / Double(max(GIFRenderer.minFPS, min(settings.gifFPS, GIFRenderer.maxFPS)))
-        motionLastAccepted = .distantPast
-        motionFrames[shot] = []
-        motionShot = shot
-    }
-
-    private func endMotionCapture() {
-        motionShot = nil
-    }
-
-    private func recordMotionFrame(_ img: NSImage) {
-        guard let shot = motionShot else { return }
-        let now = Date()
-        // The preview can arrive faster than the GIF needs. Sampling here rather
-        // than thinning later keeps the scaling work down too.
-        guard now.timeIntervalSince(motionLastAccepted) >= motionInterval else { return }
-        motionLastAccepted = now
-        guard let scaled = Self.scaleForMotion(img, within: motionFrameSize) else { return }
-        var frames = motionFrames[shot] ?? []
-        frames.append(scaled)
-        // Keep the tail. With a countdown longer than the window, the guests want
-        // the seconds just before the flash, not the ones where they were still
-        // arranging themselves.
-        if frames.count > motionCap { frames.removeFirst(frames.count - motionCap) }
-        motionFrames[shot] = frames
-    }
-
-    /// Scales a preview frame to fit the box, keeping its aspect ratio so the
-    /// slot's own `fill`/`fit` rule still decides what gets cropped.
-    private static func scaleForMotion(_ img: NSImage, within box: CGSize) -> CGImage? {
-        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let iw = CGFloat(cg.width), ih = CGFloat(cg.height)
-        guard iw > 0, ih > 0 else { return nil }
-        let scale = min(box.width / iw, box.height / ih, 1)
-        let w = max(2, Int((iw * scale).rounded())), h = max(2, Int((ih * scale).rounded()))
-        guard let ctx = CGContext(data: nil, width: w, height: h,
-                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { return nil }
-        // Medium, not high: this runs on the main thread for every kept preview
-        // frame while a countdown is on screen.
-        ctx.interpolationQuality = .medium
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return ctx.makeImage()
-    }
-
     private func finishSession() async {
         guard var session = currentSession else { return }
         state = .generatingPrint
@@ -919,11 +890,10 @@ final class BoothController: ObservableObject {
         // The GIF is built after the print, never before: the sheet is what the
         // guests are waiting on, and a failure here must not cost them one.
         if GIFRenderer.enabled, settings.makeGIF {
-            let motion = motionFrames
             let gifResult: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
                 do {
-                    return .success(try GIFRenderer.render(motion: motion, stills: urls,
-                                                           layout: layout, settings: snapshot))
+                    return .success(try GIFRenderer.renderSlideshow(stills: urls, layout: layout,
+                                                                    settings: snapshot, template: sheet))
                 } catch { return .failure(error) }
             }.value
             switch gifResult {
@@ -939,18 +909,9 @@ final class BoothController: ObservableObject {
             case .failure(let e):
                 // Not fatal, and deliberately not shown to the guests: they have
                 // their photographs and their print either way.
-                if case GIFRenderer.GIFError.noMotion = e {
-                    // Worth naming the cause: the GIF is built from the countdown's
-                    // preview, so with live view off there is nothing to animate
-                    // and no amount of retrying will change that.
-                    log.warn("No GIF for \(session.id) — no live-view frames during the countdown. The GIF needs live view switched on.")
-                } else {
-                    log.warn("GIF render failed for \(session.id): \(e.localizedDescription)")
-                }
+                log.warn("GIF render failed for \(session.id): \(e.localizedDescription)")
             }
-            // Tens of megabytes of preview frames, finished with.
-            motionFrames.removeAll()
-        }
+            }
 
         // With the finish screen holding for a press, the print holds with it.
         // The guests look at the QR card, press once when they are done, and the
@@ -965,6 +926,7 @@ final class BoothController: ObservableObject {
         queueUpload(session)
         sessionQRImage = makeQR(for: session)
         photoQRs = makePhotoQRs(for: session)
+        gifQRImage = makeGIFQR(for: session)
         brandQRImage = settings.showQRCode && qrPayloads(for: session).brand != nil ? makeBrandQR() : nil
         let waitingOnUpload = settings.qrRequiresUpload && session.uploadState != .uploaded
         if settings.showQRCode, sessionQRImage == nil, brandQRImage == nil, !waitingOnUpload {
@@ -1013,6 +975,22 @@ final class BoothController: ObservableObject {
                 }
             }
             self.returnToIdle()
+        }
+    }
+
+    /// Carries finished and failed print jobs back onto the sessions that
+    /// started them, so "printed" on a record means a sheet came out rather than
+    /// a file was handed to CUPS.
+    private func reconcilePrintJobs(_ jobs: [PrintJob]) {
+        for job in jobs {
+            guard let i = storage.sessions.firstIndex(where: { $0.id == job.sessionID }) else { continue }
+            var rec = storage.sessions[i]
+            guard rec.printJobID == job.id else { continue }
+            let wanted: PrintStatus = job.failed ? .failed : (job.done ? .printed : .printing)
+            guard rec.printStatus != wanted, rec.printStatus != .printed else { continue }
+            rec.printStatus = wanted
+            storage.persist(rec)
+            if currentSession?.id == rec.id { currentSession = rec }
         }
     }
 
@@ -1186,10 +1164,9 @@ final class BoothController: ObservableObject {
         pendingPrint = false
         sessionPrintImage = nil
         sessionGIF = nil
-        motionFrames.removeAll()
-        motionShot = nil
         sessionQRImage = nil
         photoQRs = []
+        gifQRImage = nil
         brandQRImage = nil
         let total = plannedShots > 0 ? plannedShots
                                      : (templateShotCount ?? session.layout.photoCount)
@@ -1232,6 +1209,7 @@ final class BoothController: ObservableObject {
         retakingShot = nil
         sessionQRImage = nil
         photoQRs = []
+        gifQRImage = nil
         brandQRImage = nil
         storage.refreshFreeSpace()
         updateLiveViewDesire()
@@ -1695,6 +1673,14 @@ final class BoothController: ObservableObject {
             ? session.photos.sorted { $0.index < $1.index }.compactMap { ref($0.fileName) }
             : []
         let printRef = (settings.uploadPrints && session.printFileName != nil) ? ref("print.jpg") : nil
+        // The loop is addressed as a GIF rather than through `ref`, whose `.jpg`
+        // would hand the guest one flattened frame of it.
+        let gifRef: PagesTemplate.PhotoRef? = {
+            guard GIFRenderer.enabled, settings.uploadGIFs, session.gifFileName != nil,
+                  let src = cloud.gifURL(token: token), let save = cloud.gifSaveURL(token: token)
+            else { return nil }
+            return PagesTemplate.PhotoRef(src: src.absoluteString, save: save.absoluteString)
+        }()
 
         let entries: [PagesTemplate.AlbumEntry] = storage.sessions
             .filter { $0.eventID == eventID && $0.finishedAt != nil && !$0.publicToken.isEmpty }
@@ -1715,7 +1701,7 @@ final class BoothController: ObservableObject {
         try await Task.detached(priority: .utility) {
             try publisher.writeSessionPage(session: session, event: event, token: token,
                                            eventToken: eventToken,
-                                           photos: photos, print: printRef)
+                                           photos: photos, print: printRef, gif: gifRef)
             try publisher.writeAlbumPage(event: event, eventToken: eventToken, entries: entries)
             try publisher.commitAndPush(message: message)
         }.value
@@ -1810,6 +1796,10 @@ final class BoothController: ObservableObject {
 
     /// Codes for each photograph of the session on the finish screen.
     @Published private(set) var photoQRs: [PhotoQR] = []
+    /// The loop's own code, pointing straight at the GIF file rather than at the
+    /// page around it: a guest who wants the moving one wants it in their camera
+    /// roll before they walk away, not after two more taps.
+    @Published private(set) var gifQRImage: NSImage?
 
     /// Where one photograph opens directly, on whichever host the session goes to.
     ///
@@ -1840,6 +1830,32 @@ final class BoothController: ObservableObject {
         return rec.photos.sorted { $0.index < $1.index }.compactMap { p in
             photoURL(for: rec, photo: p).map { (p.index, $0) }
         }
+    }
+
+    /// The address of the session's GIF, once it is online. Local files are no
+    /// use here — a phone cannot open a path on the booth Mac.
+    func gifURL(for rec: SessionRecord) -> URL? {
+        guard GIFRenderer.enabled, settings.uploadGIFs, rec.gifFileName != nil,
+              !rec.publicToken.isEmpty else { return nil }
+        switch settings.galleryHost {
+        case .cloudinary:
+            return cloudinary?.gifURL(token: rec.publicToken)
+        case .githubPages:
+            guard let base = normalisedSiteBase else { return nil }
+            return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/\(GIFRenderer.fileName)")
+        case .server:
+            return nil
+        }
+    }
+
+    private func makeGIFQR(for rec: SessionRecord) -> NSImage? {
+        guard settings.showQRCode else { return nil }
+        // Same rule as every other code here: nothing is offered before it is
+        // actually online, or the guest meets an error page and assumes the
+        // booth is broken.
+        if settings.qrRequiresUpload && rec.uploadState != .uploaded { return nil }
+        guard let url = gifURL(for: rec) else { return nil }
+        return QRCode.image(for: url.absoluteString, minimumSide: 360)
     }
 
     private func makePhotoQRs(for rec: SessionRecord) -> [PhotoQR] {

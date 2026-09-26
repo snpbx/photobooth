@@ -218,6 +218,65 @@ enum LayoutRenderer {
         }
     }
 
+    /// One photograph on the whole page, in the sheet's own branding.
+    ///
+    /// This is what the take-away GIF is made of. The print is a strip — the
+    /// same picture twice, or six small ones — which at GIF size leaves each
+    /// photograph the size of a stamp and the loop unreadable on a phone. So the
+    /// frame keeps everything that makes the sheet theirs (background, footer,
+    /// border, logos and stickers) and gives the photograph all the room the
+    /// photographs had between them.
+    ///
+    /// The single slot is the union of the sheet's own slots, so the picture
+    /// occupies exactly the area the arrangement set aside for pictures and
+    /// nothing lands on top of a logo that was placed clear of them.
+    static func compositeFullPage(image: CGImage?,
+                                  layout: PrintLayout,
+                                  canvas: CGSize,
+                                  settings: AppSettings,
+                                  template: PrintTemplate?) throws -> CGImage {
+        if let t = template, !t.slots.isEmpty {
+            return try composite(images: [image], template: fullPageTemplate(from: t),
+                                 canvas: canvas, settings: settings)
+        }
+        let boxes = slots(for: layout, canvas: canvas, settings: settings).map(\.rect)
+        let area = boxes.reduce(CGRect.null) { $0.union($1) }
+        return try draw(canvas: canvas, settings: settings) { ctx in
+            if let image {
+                drawPhoto(ctx, image: image, in: area, canvasH: canvas.height, mode: settings.cropMode)
+            }
+            if settings.footerEnabled {
+                // One footer across the page, even for the duplicate strip: the
+                // GIF is never cut down the middle, so it needs one title, not
+                // two half-width ones facing away from each other.
+                for region in footerRegions(for: .fourFullPage, canvas: canvas, settings: settings) {
+                    drawFooter(ctx, canvas: canvas, region: region, settings: settings, qrPayload: nil)
+                }
+            }
+        }
+    }
+
+    /// The operator's own sheet with its photograph slots collapsed into one.
+    /// Everything else — background, border, every overlay and where it sits —
+    /// is carried across untouched, which is the whole point: the loop has to
+    /// look like it came from the same booth as the print.
+    static func fullPageTemplate(from t: PrintTemplate) -> PrintTemplate {
+        var g = t
+        let minX = t.slots.map(\.rect.x).min() ?? 0.08
+        let minY = t.slots.map(\.rect.y).min() ?? 0.08
+        let maxX = t.slots.map { $0.rect.x + $0.rect.w }.max() ?? 0.92
+        let maxY = t.slots.map { $0.rect.y + $0.rect.h }.max() ?? 0.80
+        var slot = t.slots.first ?? TemplateSlot()
+        slot.rect = NormRect(x: minX, y: minY, w: max(0.05, maxX - minX), h: max(0.05, maxY - minY))
+        slot.photoIndex = 0
+        // A turned slot is a deliberate tilt for one picture among several; a
+        // single full-page frame turned by the same amount only looks broken.
+        slot.rotation = 0
+        g.slots = [slot]
+        g.qr = nil
+        return g
+    }
+
     /// Composes a sheet the operator arranged themselves.
     ///
     /// Shares every primitive with the built-in path — the same photo draw, the

@@ -820,6 +820,16 @@ struct SessionLinks: View {
                     }
                 }
 
+                if let gif = c.gifURL(for: rec) {
+                    HStack(spacing: 8) {
+                        OSDLabel(text: "GIF", size: 10, color: Palette.textDim, tracking: 0.22)
+                        Button("Copy Link") { c.copyLink(gif) }
+                            .buttonStyle(QuietButtonStyle())
+                        Button("Open") { NSWorkspace.shared.open(gif) }
+                            .buttonStyle(QuietButtonStyle())
+                    }
+                }
+
                 let photos = c.photoLinks(for: rec)
                 if !photos.isEmpty {
                     OSDLabel(text: "Each photo", size: 10, color: Palette.textDim, tracking: 0.22)

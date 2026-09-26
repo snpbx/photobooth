@@ -3,60 +3,52 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Builds the animated strip a guest takes away alongside the print.
+/// Builds the animated loop a guest takes away alongside the print.
 ///
-/// The loop is the **print's own layout**, animated. Every slot on the sheet
-/// replays the seconds immediately before its shutter fired, and they all run at
-/// once — so the whole strip moves, each frame showing what each guest was doing
-/// in the run-up to the photograph that ended up in that cell.
+/// Every photograph of the session in turn, each one filling a page dressed in
+/// the sheet's own branding — the same background, border, footer and logos, so
+/// the loop plainly came from the same booth as the print in their hand.
 ///
-/// The motion can only come from the live view. A shutter yields one still; the
-/// three seconds before it exist nowhere else, which is why `BoothController`
-/// keeps the countdown's preview frames and hands them here. The consequence is
-/// that the moving picture is preview resolution, not sensor resolution — it is
-/// drawn at the size of one cell in a 480px sheet, where that is plenty.
+/// A whole page rather than the printed strip: the print is the same picture
+/// twice, or six small ones, and at the size a GIF is watched on a phone that
+/// leaves every face the size of a thumbnail.
 ///
-/// Geometry comes from `LayoutRenderer.composite`, the same call the print uses,
-/// so the loop and the sheet cannot disagree about slots, cropping or footer.
+/// It is built from the photographs themselves rather than from the live view.
+/// Stills are what a session always has — whatever the camera was doing between
+/// shots, and whether or not live view was even running — so the loop is never
+/// the thing that fails.
 ///
 /// GIF is the format on purpose rather than by nostalgia: it is the only moving
 /// image that plays by itself in a text message, in Messages, WhatsApp and
 /// Instagram alike, with nobody pressing anything. What follows is size
 /// discipline — 256 colours and every frame stored whole, so frame count and
-/// pixels are the entire cost. See `AppSettings.gifFPS`.
+/// pixels are the entire cost, and this loop holds one frame per photograph.
 enum GIFRenderer {
 
     enum GIFError: LocalizedError {
-        case noMotion
+        case noPhotos
         case encodeFailed
 
         var errorDescription: String? {
             switch self {
-            case .noMotion:     return "No live-view frames were captured to animate."
+            case .noPhotos:     return "The session has no photographs to animate."
             case .encodeFailed: return "Could not encode the GIF."
             }
         }
     }
 
-    /// Master switch, off while the feature is being reworked.
-    ///
-    /// Everything the GIF touches is gated on this — building it, the finish
-    /// screen, the operator's gallery, the session page, the album and the
-    /// uploads — so a session that already has a `session.gif` sitting in its
-    /// folder stays hidden too, rather than half-appearing in one place and not
-    /// another. Nothing is deleted and no file on disk is touched: set this to
-    /// `true` and the whole feature comes back exactly as it was.
-    static let enabled = false
+    /// Master switch. Everything the GIF touches is gated on this — building it,
+    /// the finish screen, the operator's gallery, the session page, the album and
+    /// the uploads — so the feature is never half-present.
+    static let enabled = true
 
     static let fileName = "session.gif"
 
-    /// Run-up window, in seconds. Clamped rather than trusted: a settings file
-    /// asking for thirty seconds would hold thirty seconds of preview for every
-    /// shot in memory and then encode a GIF nobody waits through.
-    static let minSeconds: Double = 1
-    static let maxSeconds: Double = 6
-    static let minFPS = 5
-    static let maxFPS = 20
+    /// How long one photograph is held, in seconds. Clamped rather than trusted:
+    /// a settings file asking for thirty would hand the guest a loop nobody
+    /// watches to the end.
+    static let minSeconds: Double = 0.3
+    static let maxSeconds: Double = 3
 
     // MARK: - Geometry
 
@@ -92,55 +84,36 @@ enum GIFRenderer {
         composeSettings(settings).pixelSize
     }
 
-    /// How large a preview frame has to be kept for one cell of the finished GIF.
-    /// A little headroom above the slot so a `fill` crop is not resampling up.
-    static func motionFrameSize(layout: PrintLayout, settings: AppSettings) -> CGSize {
-        let g = composeSettings(settings)
-        let slot = LayoutRenderer.largestSlotSize(for: layout, canvas: g.pixelSize, settings: g)
-        return CGSize(width: (slot.width * 1.2).rounded(), height: (slot.height * 1.2).rounded())
-    }
-
-    static func frameCount(settings: AppSettings) -> Int {
-        let seconds = min(max(settings.gifSeconds, minSeconds), maxSeconds)
-        let fps = max(minFPS, min(settings.gifFPS, maxFPS))
-        return max(2, Int((seconds * Double(fps)).rounded()))
-    }
-
     // MARK: - Rendering
 
-    /// Renders the animated strip. Runs off the main thread.
+    /// Builds the take-away loop: every photograph of the session in turn, each
+    /// one filling a page in the sheet's own branding.
     ///
-    /// - Parameters:
-    ///   - motion: preview frames from each shot's run-up, keyed by shot number
-    ///     (1-based, as the booth counts them). A shot with no frames falls back
-    ///     to its still, so one camera hiccup costs one static cell rather than
-    ///     the whole loop.
-    ///   - stills: the captured photographs, in shot order — the fallback, and
-    ///     what fills any cell the live view never reached.
-    static func render(motion: [Int: [CGImage]],
-                       stills: [URL],
-                       layout: PrintLayout,
-                       settings: AppSettings) throws -> Data {
-        guard motion.values.contains(where: { !$0.isEmpty }) else { throw GIFError.noMotion }
+    /// The photographs are what a guest wants to send on — not the seconds
+    /// before them — and stills are what a session always has, whether or not
+    /// live view was running when the shutter fired. Each frame is a whole page
+    /// rather than the printed strip because a six-up strip at phone size leaves
+    /// every face the size of a thumbnail.
+    ///
+    /// Runs off the main thread.
+    static func renderSlideshow(stills: [URL],
+                                layout: PrintLayout,
+                                settings: AppSettings,
+                                template: PrintTemplate?) throws -> Data {
+        guard !stills.isEmpty else { throw GIFError.noPhotos }
 
         let g = composeSettings(settings)
         let canvas = g.pixelSize
-        let fps = max(minFPS, min(settings.gifFPS, maxFPS))
-        let count = frameCount(settings: settings)
-
-        // Delay is rounded onto GIF's hundredth-of-a-second grid before it is
-        // written; handing it 1/15 would silently become 0.06 and the loop would
-        // run 10% fast.
-        let delay = max(0.02, (1.0 / Double(fps) * 100).rounded() / 100)
-
-        // Loaded once, not once per frame: a cell with no motion shows its still
-        // in all `count` frames.
-        let fallback: [CGImage?] = stills.map { LayoutRenderer.loadOrientedImage(at: $0) }
+        let hold = min(max(settings.gifSeconds, minSeconds), maxSeconds)
+        // GIF stores delay on a hundredth-of-a-second grid; rounding here rather
+        // than letting the encoder do it keeps the loop running at the length
+        // the operator asked for.
+        let delay = max(0.02, (hold * 100).rounded() / 100)
 
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out as CFMutableData,
                                                           UTType.gif.identifier as CFString,
-                                                          count, nil)
+                                                          stills.count, nil)
         else { throw GIFError.encodeFailed }
 
         // 0 = loop forever. A photobooth GIF that stops after one pass looks broken.
@@ -158,28 +131,18 @@ enum GIFRenderer {
             ]
         ] as CFDictionary
 
-        for k in 0..<count {
-            var images: [CGImage?] = []
-            for photoIndex in 0..<max(stills.count, motion.keys.max() ?? 0) {
-                let frames = motion[photoIndex + 1] ?? []
-                if frames.isEmpty {
-                    images.append(photoIndex < fallback.count ? fallback[photoIndex] : nil)
-                } else {
-                    // Shots rarely end up with identical frame counts — the
-                    // preview arrives when it arrives. Each cell is sampled
-                    // across its own run, so every cell starts and finishes
-                    // together however many frames it actually got.
-                    let i = frames.count == 1 ? 0
-                        : Int((Double(k) / Double(count - 1) * Double(frames.count - 1)).rounded())
-                    images.append(frames[min(max(0, i), frames.count - 1)])
-                }
-            }
-            let sheet = try LayoutRenderer.composite(images: images, layout: layout,
-                                                     canvas: canvas, settings: g)
-            CGImageDestinationAddImage(dest, sheet, frameProps)
+        var written = 0
+        for url in stills {
+            guard let photo = LayoutRenderer.loadOrientedImage(at: url) else { continue }
+            let page = try LayoutRenderer.compositeFullPage(image: photo, layout: layout,
+                                                            canvas: canvas, settings: g,
+                                                            template: template)
+            CGImageDestinationAddImage(dest, page, frameProps)
+            written += 1
         }
-
+        guard written > 0 else { throw GIFError.noPhotos }
         guard CGImageDestinationFinalize(dest) else { throw GIFError.encodeFailed }
         return out as Data
     }
+
 }

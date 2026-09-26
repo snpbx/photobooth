@@ -548,6 +548,11 @@ extension WebcamCameraService: AVCapturePhotoCaptureDelegate {
 /// rehearse timings, train a helper, or demo the booth to a client with no DSLR
 /// attached. Never selected automatically, and the guest screen shows a DEMO badge
 /// while it is active so it cannot be mistaken for a live camera at an event.
+///
+/// The frames carry the operator's own logo when they have set one, so a booth
+/// being shown to a client — screen, print, GIF and webpage — is their booth all
+/// the way through rather than a stranger's test card. The DEMO badge on the
+/// guest screen is what keeps it honest.
 final class DemoCameraService: CameraBackendService, @unchecked Sendable {
     var onState: ((CameraState) -> Void)?
     var onFrame: ((NSImage) -> Void)?
@@ -556,6 +561,10 @@ final class DemoCameraService: CameraBackendService, @unchecked Sendable {
     private var running = false
     private var connected = false
     private var frameIndex = 0
+    /// Loaded once and held: the demo draws fifteen frames a second, and reading
+    /// the file on each of them would be a disk hit per frame all evening.
+    private static var logoName = ""
+    private static var logo: CGImage?
     private var fps: Int
 
     init(fps: Int) { self.fps = max(1, min(30, fps)) }
@@ -604,6 +613,17 @@ final class DemoCameraService: CameraBackendService, @unchecked Sendable {
 
     func didPersistLastCapture() {}
 
+    /// Points the demo at the operator's mark. Empty goes back to the word DEMO.
+    func setLogo(_ fileName: String) {
+        queue.async {
+            guard fileName != Self.logoName else { return }
+            Self.logoName = fileName
+            Self.logo = BrandingAssets.url(for: fileName)
+                .flatMap { NSImage(contentsOf: $0) }
+                .flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        }
+    }
+
     private static func frame(index: Int, size: CGSize) -> NSImage? {
         guard let ctx = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
                                   bitsPerComponent: 8, bytesPerRow: 0,
@@ -628,14 +648,28 @@ final class DemoCameraService: CameraBackendService, @unchecked Sendable {
         ctx.setFillColor(NSColor.white.withAlphaComponent(0.9).cgColor)
         ctx.fillEllipse(in: CGRect(x: size.width * t - r, y: size.height / 2 - r, width: r * 2, height: r * 2))
 
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: size.height * 0.09, weight: .heavy),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.85)
-        ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "DEMO", attributes: attrs))
-        let b = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-        ctx.textPosition = CGPoint(x: size.width / 2 - b.width / 2 - b.minX, y: size.height * 0.16)
-        CTLineDraw(line, ctx)
+        // The operator's mark where the word DEMO would be, at its own
+        // proportions. Drawn at the same lightness as the lettering it replaces,
+        // so a white-on-transparent logo reads over any of the cycling grounds.
+        if let logo, logo.width > 0, logo.height > 0 {
+            let maxW = size.width * 0.62, maxH = size.height * 0.24
+            let scale = min(maxW / CGFloat(logo.width), maxH / CGFloat(logo.height))
+            let w = CGFloat(logo.width) * scale, h = CGFloat(logo.height) * scale
+            ctx.saveGState()
+            ctx.setAlpha(0.9)
+            ctx.interpolationQuality = .high
+            ctx.draw(logo, in: CGRect(x: size.width / 2 - w / 2, y: size.height * 0.13, width: w, height: h))
+            ctx.restoreGState()
+        } else {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: size.height * 0.09, weight: .heavy),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.85)
+            ]
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: "DEMO", attributes: attrs))
+            let b = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            ctx.textPosition = CGPoint(x: size.width / 2 - b.width / 2 - b.minX, y: size.height * 0.16)
+            CTLineDraw(line, ctx)
+        }
 
         guard let cg = ctx.makeImage() else { return nil }
         return NSImage(cgImage: cg, size: NSSize(width: size.width, height: size.height))

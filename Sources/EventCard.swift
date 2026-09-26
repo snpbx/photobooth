@@ -50,12 +50,45 @@ struct EventCard: View {
 
                 let count = c.storage.sessions(inEvent: e.id).count
                 let photos = c.storage.sessions(inEvent: e.id).reduce(0) { $0 + $1.photos.count }
+                let prints = c.printCounts(forEvent: e.id)
                 HStack {
                     Text("\(count) session\(count == 1 ? "" : "s") · \(photos) photo\(photos == 1 ? "" : "s")")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textDim)
                     Spacer()
                 }
+
+                // Sheets, not sessions: copies are what empties a paper
+                // cartridge, and the number the operator is really watching is
+                // how many are left in the pack.
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(prints.printed)")
+                        .font(.system(size: 26, weight: .semibold))
+                        .monospacedDigit()
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(prints.printed == 1 ? "print out" : "prints out")
+                            .font(.system(size: 11, weight: .medium))
+                        if prints.pending > 0 || prints.failed > 0 {
+                            HStack(spacing: 6) {
+                                if prints.pending > 0 {
+                                    Text("\(prints.pending) in the queue")
+                                        .foregroundStyle(Palette.statusWarn)
+                                }
+                                if prints.failed > 0 {
+                                    Text("\(prints.failed) failed")
+                                        .foregroundStyle(Palette.statusBad)
+                                }
+                            }
+                            .font(.system(size: 10))
+                        } else {
+                            Text("this event")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Palette.textDim)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 2)
             } else {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "calendar.badge.plus")

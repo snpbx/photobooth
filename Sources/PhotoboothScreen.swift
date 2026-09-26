@@ -451,6 +451,7 @@ private struct CompleteCentre: View {
     private var qrCards: [QRCard] {
         var out: [QRCard] = []
         if let qr = c.sessionQRImage { out.append(QRCard(image: qr, caption: c.settings.qrCaption)) }
+        if let qr = c.gifQRImage { out.append(QRCard(image: qr, caption: "SCAN FOR YOUR GIF")) }
         if let qr = c.brandQRImage { out.append(QRCard(image: qr, caption: c.settings.customQRCaption)) }
         return out
     }
@@ -490,6 +491,7 @@ private struct CompleteCentre: View {
                     // The long "scan to get your photos" caption does not fit a
                     // grid tile; beside PHOTO 1, 2, 3, "ALL PHOTOS" says it.
                     PhotoQRGrid(tiles: (c.sessionQRImage.map { [("ALL PHOTOS", $0)] } ?? [])
+                                    + (c.gifQRImage.map { [("THE GIF", $0)] } ?? [])
                                     + (c.brandQRImage.map { [(c.settings.customQRCaption, $0)] } ?? [])
                                     + c.photoQRs.map { ("PHOTO \($0.id)", $0.image) },
                                 m: m)

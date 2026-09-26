@@ -30,6 +30,13 @@ print completely different sheets with nothing switched over between them.
 balance and the rest of the Canon's own settings are read from the body and can
 be changed in the admin, without touching the camera.
 
+**Print counter** — the Event card counts **sheets** rather than sessions, since
+copies are what empties a paper cartridge: a session set to two copies takes two
+out of the pack. A sheet counts as printed only once CUPS says the job finished —
+the job is watched and carried back onto the session record, so "printed" means
+one came out rather than one was handed to the print system. Anything still
+queued or failed is shown beside the total.
+
 **Events** — every session belongs to one client booking, so a night's
 photographs stay segregated on disk rather than piling into one folder. Sessions
 cannot start without an event selected, and the Start button carries the client's
@@ -37,6 +44,13 @@ name.
 
 **Turned slots and stickers** — anything on a print layout can be set at an
 angle, by dragging its handle or typing the degrees.
+
+**A GIF for every session** — each photograph filling a page in the print's own
+branding, saved beside the photographs, uploaded with them, and carrying its own
+QR code on the finish screen so a guest can take it away there and then.
+
+**A print counter per event** — sheets actually out of the printer, with anything
+still queued or failed beside it.
 
 **Session pages and per-photo codes** — every session gets its own webpage,
 styled after Glyphy, with its link in the admin; every photograph gets its own code
@@ -115,7 +129,10 @@ No proprietary SELPHY protocol is implemented.
 Two other camera sources exist behind the same `CameraBackendService` protocol:
 a UVC/webcam backend, and a demo source that generates test frames. The demo
 source paints a large orange **DEMO SOURCE** badge across the guest screen so it
-cannot be left selected at an event by mistake.
+cannot be left selected at an event by mistake. Its frames carry the operator's
+own idle logo when one is set, so a booth being shown to a client — screen,
+print, GIF and webpage — is their booth all the way through rather than a
+stranger's test card; the badge is what keeps that honest.
 
 ## Layout
 
@@ -325,58 +342,51 @@ immediately, and drains whenever the site is next reachable — this launch or
 three days later. Retries back off 30s → 15min. The multipart body is streamed
 to a temp file so a 40-photo session is never held in memory twice.
 
-## The GIF — currently off
+## The GIF
 
-> **Switched off pending a rework.** `GIFRenderer.enabled` is `false`, which gates
-> every place the feature surfaced: building it, the finish screen, the operator's
-> gallery, the session page, the album and the uploads. Sessions that already have
-> a `session.gif` on disk stay hidden too, rather than half-appearing in one place
-> and not another. Nothing has been deleted and no file on disk is touched — set
-> the flag to `true` and all of the below comes back as it was. The rest of this
-> section describes the feature as built.
+Every session also produces `session.gif`: **each photograph in turn, filling a
+page in the sheet's own branding** — the same background, border, footer and
+logos as the print, so the loop plainly came from the same booth as the strip in
+the guest's hand. One frame per photograph, held 0.8s by default, looping for
+ever.
 
-Every session also produces `session.gif` — **the print's own layout, animated**.
-Each slot on the sheet replays the seconds immediately before its shutter fired,
-and they all run at once, so the whole strip moves: every cell shows what those
-guests were doing in the run-up to the photograph that ended up in it. Three
-seconds at 10 fps by default, played at real speed, looping forever.
+A whole page rather than the printed strip. The print is the same picture twice,
+or six small ones; at the size a GIF is watched on a phone that leaves every face
+a thumbnail. `LayoutRenderer.compositeFullPage` collapses the sheet's photograph
+slots into their own union and gives one photograph all of it, keeping everything
+else exactly where the sheet puts it — so a logo placed clear of the pictures is
+still clear of them.
 
-The motion can only come from the live view. A shutter yields one still; the
-three seconds before it exist nowhere else. So `BoothController` records the
-countdown's preview frames per shot, scaling each one down to the size it will
-occupy in the finished GIF as it arrives — holding three seconds of 960px preview
-for eight shots would be hundreds of megabytes of pixels about to be thrown away.
-Two consequences follow: **the moving picture is preview resolution, not sensor
-resolution**, and **with live view off there is no GIF at all** — the log says so
-rather than the booth failing quietly.
+It is built from the photographs, not from live view. Stills are what a session
+always has, whatever the camera was doing between shots and whether or not live
+view was even running, so the loop is never the thing that fails. (An earlier
+version animated the seconds before each shutter from the preview stream; it
+depended on live view, held hundreds of megabytes of frames per session, and is
+gone.)
 
-Geometry comes from `LayoutRenderer.composite`, the same call that draws the
-print, so the loop and the sheet cannot disagree about slots, cropping or footer.
 The GIF's settings carry the print's geometry with `dpi` moved to match the
 smaller canvas — margins and type are specified in inches, so without that a
 quarter-inch margin becomes a third of a 320px sheet. The QR code is dropped: it
 is unreadable at that size, and hard black-and-white detail is the most expensive
 thing a 256-colour format can carry, repeated in every frame.
 
-Animating the whole sheet costs far more than a slideshow of stills — thirty
-frames rather than four. Measured on photographic content at 3s and 10 fps, the
-range covering all three layouts:
+One frame per photograph keeps it small. Measured on photographic content, an
+eight-shot session:
 
 | Long edge | File |
 | --- | --- |
-| 360 px | 1.1 – 1.5 MB |
-| **480 px** (default) | **1.9 – 2.5 MB** |
-| 640 px | 3.6 – 4.5 MB |
-
-Frame rate scales that in direct proportion. On poor venue wifi, 360 px at 8 fps
-is about a third of the default.
+| 360 px | 0.4 – 0.6 MB |
+| **480 px** (default) | **0.7 – 1.0 MB** |
+| 640 px | 1.2 – 1.8 MB |
 
 The GIF travels with the photographs everywhere they go — the session page, the
 encrypted album, Cloudinary — and appears on the finish screen beside the print
-so guests know there is one to take before they scan anything. Under **light
-rendering** it is shown as a still: the finish screen can be held for minutes,
-and a loop running that whole time is exactly the perpetual redraw that mode
-exists to remove.
+so guests know there is one to take. **Its own QR code** sits with the others,
+pointing straight at the GIF file rather than at the page around it: a guest who
+wants the moving one wants it in their camera roll before they walk away, not
+after two more taps. Under **light rendering** it is shown as a still: the finish
+screen can be held for minutes, and a loop running that whole time is exactly the
+perpetual redraw that mode exists to remove.
 
 ## Session pages and per-photo codes
 

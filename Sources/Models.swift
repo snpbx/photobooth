@@ -448,12 +448,12 @@ struct AppSettings: Codable, Equatable {
     /// Build a looping GIF of the session's photographs and hand it over with
     /// the print. Costs about a second of CPU at the end of a session.
     var makeGIF: Bool = true
-    /// How many seconds of the run-up to each shot the loop replays. The GIF is
-    /// played back at real speed, so this is also the length of the loop.
-    /// Clamped to `GIFRenderer.minSeconds ... maxSeconds` when it is rendered.
-    var gifSeconds: Double = 3
-    /// Preview frames kept per second. With `gifSeconds` this sets the frame
-    /// count, and frame count is most of what a GIF weighs.
+    /// How long each photograph is held in the loop. With the number of
+    /// photographs this is the length of the whole loop. Clamped to
+    /// `GIFRenderer.minSeconds ... maxSeconds` when it is rendered.
+    var gifSeconds: Double = 0.8
+    /// No longer used: the loop holds one frame per photograph rather than
+    /// sampling live view. Kept so an older settings file still decodes.
     var gifFPS: Int = 10
     /// Long edge in pixels. GIF has no real compression for photographs, so this
     /// is the single number that decides the file size.

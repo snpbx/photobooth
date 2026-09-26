@@ -467,46 +467,33 @@ private struct CameraAdvancedCard: View {
     @ObservedObject var c: BoothController
 
     var body: some View {
-        // Hidden while the GIF is being reworked. See `GIFRenderer.enabled`.
         if GIFRenderer.enabled {
         SectionCard(title: "Animated GIF") {
             LabeledRow(label: "Make a GIF",
-                       help: "Animates the print's own layout: every slot replays the seconds before its shutter fired, all at once. Needs live view on during the countdown — that is where the motion comes from.") {
+                       help: "After every session, builds a looping GIF of that session's photographs — each one filling a page in the same branding as the print. Saved beside the photographs, and on the session's webpage for guests to take away.") {
                 Toggle("", isOn: Binding(
                     get: { c.settingsService.settings.makeGIF },
                     set: { c.settingsService.settings.makeGIF = $0 }))
                     .labelsHidden()
             }
 
-            LabeledRow(label: "Run-up",
-                       help: "How much of the countdown each slot replays, ending at the shutter. Played back at real speed, so it is also the length of the loop. A countdown shorter than this gives whatever it has.") {
+            LabeledRow(label: "Hold each photo",
+                       help: "How long one photograph stays on screen. With the number of photographs, this is the length of the loop.") {
                 Picker("", selection: Binding(
                     get: { c.settingsService.settings.gifSeconds },
                     set: { c.settingsService.settings.gifSeconds = $0 })) {
-                        ForEach([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], id: \.self) { v in
-                            Text("\(Int(v)) seconds").tag(v)
-                        }
-                }
-                .labelsHidden().frame(width: 140)
-                .disabled(!c.settings.makeGIF)
-            }
-
-            LabeledRow(label: "Smoothness",
-                       help: "Frames kept per second. With the run-up this sets the frame count, and frame count is most of what a GIF weighs — 15 fps is half again the size of 10 for motion few people will look at twice.") {
-                Picker("", selection: Binding(
-                    get: { c.settingsService.settings.gifFPS },
-                    set: { c.settingsService.settings.gifFPS = $0 })) {
-                        Text("8 fps — smallest").tag(8)
-                        Text("10 fps — recommended").tag(10)
-                        Text("12 fps").tag(12)
-                        Text("15 fps — smoothest").tag(15)
+                        Text("0.4 s — quick").tag(0.4)
+                        Text("0.6 s").tag(0.6)
+                        Text("0.8 s — recommended").tag(0.8)
+                        Text("1.2 s").tag(1.2)
+                        Text("2 s — slow").tag(2.0)
                 }
                 .labelsHidden().frame(width: 200)
                 .disabled(!c.settings.makeGIF)
             }
 
             LabeledRow(label: "Size",
-                       help: "Long edge of the sheet. With frame count this decides what a guest downloads on venue wifi. \(gifSizeNote)") {
+                       help: "Long edge of the page. This is what a guest downloads on venue wifi. \(gifSizeNote)") {
                 Picker("", selection: Binding(
                     get: { c.settingsService.settings.gifLongEdge },
                     set: { c.settingsService.settings.gifLongEdge = $0 })) {
@@ -520,7 +507,7 @@ private struct CameraAdvancedCard: View {
             }
 
             LabeledRow(label: "Put it on the site",
-                       help: "Uploads the GIF with the photographs, so it is on the session page and in the album.") {
+                       help: "Uploads the GIF with the photographs, so it is on the session page the guest's code opens.") {
                 Toggle("", isOn: Binding(
                     get: { c.settingsService.settings.uploadGIFs },
                     set: { c.settingsService.settings.uploadGIFs = $0 }))
@@ -799,7 +786,7 @@ private struct MaintenanceCard: View {
 /// of stills did — thirty frames rather than four — so these are worth knowing
 /// before a night on venue wifi.
 private var gifSizeNote: String {
-    "At 3s and 10 fps: roughly 1.1–1.5 MB at 360 px, 1.9–2.5 MB at 480 and 3.6–4.5 MB at 640. Frame rate scales it in direct proportion."
+    "One frame per photograph, so an eight-shot session runs roughly 0.4–0.6 MB at 360 px, 0.7–1.0 MB at 480 and 1.2–1.8 MB at 640."
 }
 
 // MARK: - Helpers
