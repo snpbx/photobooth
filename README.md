@@ -49,6 +49,10 @@ that snap.
 **A printed cutting line** — a faint dotted line down the middle of a sheet that
 holds two strips, so they can be cut apart cleanly.
 
+**Photographs with no internet** — the booth serves them off its own disk over
+the venue's wifi, with a *join wifi* code on the finish screen; the printed code
+still points at the permanent online page.
+
 **A GIF for every session** — each photograph filling a page in the print's own
 branding, saved beside the photographs, uploaded with them, and carrying its own
 QR code on the finish screen so a guest can take it away there and then.
@@ -391,6 +395,47 @@ wants the moving one wants it in their camera roll before they walk away, not
 after two more taps. Under **light rendering** it is shown as a still: the finish
 screen can be held for minutes, and a loop running that whole time is exactly the
 perpetual redraw that mode exists to remove.
+
+## Photographs over the venue's own wifi
+
+A booth is very often somewhere with a network and no usable connection — a
+marquee, a basement, a ballroom whose wifi is three bars of nothing. The
+photographs are on this Mac the moment the shutter closes, so the only thing
+between a guest and their pictures is a web server.
+
+`LocalGalleryServer` is that server: it listens on every interface, and answers
+three things and nothing else.
+
+* `/s/<token>/` — the session page, the same design the web gets
+* `/s/<token>/<file>` — one photograph, the print or the GIF
+* `/` — the landing page, which lists nothing
+
+Nothing is enumerable. A file is served only if it appears in that session's own
+list of files, matched by name rather than looked up on disk, so no path can be
+talked into leaving the folder; an unknown token is a 404. A booth on a venue's
+wifi should hand a stranger nothing.
+
+**Two codes, pointing at different places, on purpose.** The code on the *screen*
+points at this Mac: instant, no upload to wait for, no internet needed. The code
+*printed on the strip* keeps pointing at the permanent online page, because the
+Mac's address dies when the booth is packed away — the upload queue publishes
+that page the next time there is a connection. Per-photo codes and the GIF code
+follow the screen's lead, which also means **individual photographs work offline
+even with Originals switched off**, since they are on this disk either way.
+
+**Joining the network is the step guests give up on**, so the finish screen can
+carry a *join wifi* card: `WIFI:T:WPA;S:…;P:…;;`, which both iOS and Android read
+straight from the camera and offer to act on. The operator types the network's
+name and password once in Admin.
+
+The address is re-read rather than remembered. DHCP hands out a different one at
+every venue, and a booth carried into another room lands on another network, so
+the five-second tick that watches for the camera watches the address too and
+rebuilds the codes on screen when it changes. A fixed address can be pinned in
+Admin for an operator who always brings the same router.
+
+macOS will ask once for permission to accept incoming connections — the booth
+cannot be reached until that is allowed.
 
 ## Session pages and per-photo codes
 

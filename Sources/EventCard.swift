@@ -244,6 +244,117 @@ struct EventForm: View {
     }
 }
 
+// MARK: - Serving from this Mac
+
+/// Handing photographs out over the venue's own wifi, with no internet at all.
+///
+/// The address is the whole card: it is what fifty people are about to scan,
+/// and it changes with the network, so it is shown plainly and re-read rather
+/// than remembered.
+struct LocalGalleryCard: View {
+    @ObservedObject var c: BoothController
+
+    var body: some View {
+        let on = c.settings.localServeEnabled
+        let ready = on && c.localServing && c.localAddress != nil
+        SectionCard(title: "Photos Over Local Wifi",
+                    accessory: AnyView(
+                        HStack(spacing: 6) {
+                            StatusDot(tint: !on ? Palette.textDim
+                                             : (ready ? Palette.statusOK : Palette.statusWarn),
+                                      pulsing: on && !ready)
+                            Text((!on ? "Off" : (ready ? "Serving" : "Not reachable")).uppercased())
+                                .font(VHS.mono(10, .semibold))
+                                .tracking(0.8)
+                                .foregroundStyle(!on ? Palette.textDim
+                                                     : (ready ? Palette.statusOK : Palette.statusWarn))
+                        })) {
+
+            LabeledRow(label: "Serve from this Mac",
+                       help: "Guests scan the code on the screen and get their photographs straight off this Mac, over whatever wifi the booth is on. No internet is needed — the network just has to exist, and their phones have to be on it.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.localServeEnabled },
+                    set: { c.settingsService.settings.localServeEnabled = $0 }))
+                    .labelsHidden()
+            }
+
+            if on {
+                VStack(alignment: .leading, spacing: 4) {
+                    OSDLabel(text: "Address guests reach", size: 10, color: Palette.textDim, tracking: 0.22)
+                    Text(c.localAddress.map { "http://\($0):\(c.settings.localServePort)" }
+                         ?? "This Mac is on no network — connect it to the booth's wifi.")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(c.localAddress == nil ? Palette.statusWarn : Palette.text)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let err = c.localServeError {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.statusBad)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                LabeledRow(label: "Port",
+                           help: "Change it only if something else on this Mac already answers on 8080.") {
+                    IntStepper(value: Binding(
+                        get: { c.settingsService.settings.localServePort },
+                        set: { c.settingsService.settings.localServePort = $0 }),
+                        range: 1024...65535)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Fixed address (optional)").font(.system(size: 12, weight: .medium))
+                    TextField("e.g. 192.168.8.10 or photobooth.local", text: Binding(
+                        get: { c.settingsService.settings.localServeHost },
+                        set: { c.settingsService.settings.localServeHost = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                    Text("Leave empty and the booth uses whatever address it has right now. Fill it in if you always bring the same router and gave this Mac a fixed address.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider().opacity(0.4)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Wifi guests join").font(.system(size: 12, weight: .medium))
+                    TextField("Network name", text: Binding(
+                        get: { c.settingsService.settings.localWiFiSSID },
+                        set: { c.settingsService.settings.localWiFiSSID = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Password (leave empty if open)", text: Binding(
+                        get: { c.settingsService.settings.localWiFiPassword },
+                        set: { c.settingsService.settings.localWiFiPassword = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                    Text("Puts a “join wifi” code on the finish screen. Phones read it from the camera and offer to join, which is the step most guests give up on.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let wifi = c.wifiQRImage {
+                    HStack(spacing: 10) {
+                        Image(nsImage: wifi)
+                            .resizable().interpolation(.none)
+                            .frame(width: 64, height: 64)
+                            .padding(4)
+                            .background(Color.white)
+                        Text("This is the code guests see. Scan it yourself to check it joins.")
+                            .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Divider().opacity(0.4)
+
+                Text("The code on the screen points here. The code printed on the strip keeps pointing at the online page, because this address stops working when the booth is packed away — the upload queue publishes it when you next have internet.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 // MARK: - Gallery site card
 
 struct GallerySiteCard: View {

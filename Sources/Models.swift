@@ -439,6 +439,20 @@ struct AppSettings: Codable, Equatable {
     var uploadOriginals: Bool = true
     var uploadPrints: Bool = true
     var galleryHost: GalleryHost = .server
+
+    // Handing photographs out over the venue's own wifi, with no internet
+    // involved. The screen's code points at this Mac; the printed one keeps
+    // pointing at the permanent address, because this one ends with the night.
+    var localServeEnabled: Bool = false
+    var localServePort: Int = 8080
+    /// Pin an address if the booth always joins the same router — an IP, or a
+    /// name like `photobooth.local`. Empty means "whatever this Mac answers to
+    /// right now", which is what a strange venue needs.
+    var localServeHost: String = ""
+    /// The network guests must join, offered as a code they can scan. Empty
+    /// means no card is shown.
+    var localWiFiSSID: String = ""
+    var localWiFiPassword: String = ""
     var pagesRepoPath: String = ""           // local clone of the GitHub Pages repo
     var pagesRemote: String = ""             // git@github.com:user/repo.git or the https form
     var pagesBranch: String = "main"

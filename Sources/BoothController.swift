@@ -268,6 +268,7 @@ final class BoothController: ObservableObject {
 
         rebuildCamera(for: s.settings.cameraBackend)
         startDetectPolling()
+        applyLocalServing(s.settings)
     }
 
     // MARK: Events
@@ -437,6 +438,7 @@ final class BoothController: ObservableObject {
             demo.setLogo(new.idleLogoFile)
         }
         updateLiveViewDesire(using: new)
+        applyLocalServing(new)
     }
 
     // MARK: Camera wiring
@@ -514,6 +516,21 @@ final class BoothController: ObservableObject {
     /// the camera is missing, and somebody is looking at the console. Once
     /// connected, the backend's own watchdog notices an unplugged cable.
     private func detectTick() {
+        // A booth carried into another room lands on another network, and the
+        // address in every code on screen would quietly stop working. Cheap to
+        // check — it reads the interfaces, it does not touch the network.
+        if settings.localServeEnabled {
+            let before = localAddress
+            refreshLocalAddress()
+            if before != localAddress, before != nil {
+                log.info("Local address changed to \(localAddress ?? "none")")
+                if let s = currentSession, case .complete = state {
+                    sessionQRImage = makeQR(for: s)
+                    photoQRs = makePhotoQRs(for: s)
+                    gifQRImage = makeGIFQR(for: s)
+                }
+            }
+        }
         guard !cameraState.isReady else { return }
         guard adminWindowVisible || state.isSessionActive else { return }
         refreshDetectedCameras()
@@ -924,6 +941,9 @@ final class BoothController: ObservableObject {
         }
 
         queueUpload(session)
+        // Before the codes: the server has to know about this session, or the
+        // first guest to scan gets a 404 from a booth holding their photographs.
+        publishLocalSessions()
         sessionQRImage = makeQR(for: session)
         photoQRs = makePhotoQRs(for: session)
         gifQRImage = makeGIFQR(for: session)
@@ -1800,6 +1820,15 @@ final class BoothController: ObservableObject {
     /// page around it: a guest who wants the moving one wants it in their camera
     /// roll before they walk away, not after two more taps.
     @Published private(set) var gifQRImage: NSImage?
+    /// Where this Mac can be reached on the venue's network, and whether the
+    /// server is up. Published so the console can show the operator the address
+    /// they are about to ask fifty people to scan.
+    @Published private(set) var localAddress: String?
+    @Published private(set) var localServing = false
+    @Published private(set) var localServeError: String?
+    /// The code that joins the booth's wifi, built from the network's name and
+    /// password rather than from anything a session knows.
+    @Published private(set) var wifiQRImage: NSImage?
 
     /// Where one photograph opens directly, on whichever host the session goes to.
     ///
@@ -1810,6 +1839,12 @@ final class BoothController: ObservableObject {
     /// address is the one thing it will reliably show.
     func photoURL(for rec: SessionRecord, photo: Photo) -> URL? {
         guard !rec.publicToken.isEmpty else { return nil }
+        // The local server carries every photograph a session has, whether or
+        // not the originals were ever meant to be uploaded — they are on this
+        // disk either way.
+        if let local = localURL(for: rec) {
+            return URL(string: local.absoluteString + photo.fileName)
+        }
         switch settings.galleryHost {
         case .cloudinary:
             return cloudinary?.photoURL(token: rec.publicToken, fileName: photo.fileName)
@@ -1822,11 +1857,12 @@ final class BoothController: ObservableObject {
     }
 
     func photoLinks(for rec: SessionRecord) -> [(number: Int, url: URL)] {
-        // Only when the photographs themselves are uploaded. With originals off
-        // just the print goes up, and a link to anything else is a perfectly
-        // formed address for an image that does not exist — a guest scanning
-        // it gets a 404 and concludes the booth is broken.
-        guard settings.uploadOriginals else { return [] }
+        // Only when the photographs are actually at the other end. Served from
+        // this Mac they always are; online, only if originals are uploaded —
+        // with originals off, a link to one is a perfectly formed address for an
+        // image that does not exist, and a guest who gets a 404 concludes the
+        // booth is broken.
+        guard localURL(for: rec) != nil || settings.uploadOriginals else { return [] }
         return rec.photos.sorted { $0.index < $1.index }.compactMap { p in
             photoURL(for: rec, photo: p).map { (p.index, $0) }
         }
@@ -1835,8 +1871,11 @@ final class BoothController: ObservableObject {
     /// The address of the session's GIF, once it is online. Local files are no
     /// use here — a phone cannot open a path on the booth Mac.
     func gifURL(for rec: SessionRecord) -> URL? {
-        guard GIFRenderer.enabled, settings.uploadGIFs, rec.gifFileName != nil,
-              !rec.publicToken.isEmpty else { return nil }
+        guard GIFRenderer.enabled, let gif = rec.gifFileName, !rec.publicToken.isEmpty else { return nil }
+        if let local = localURL(for: rec) {
+            return URL(string: local.absoluteString + gif)
+        }
+        guard settings.uploadGIFs else { return nil }
         switch settings.galleryHost {
         case .cloudinary:
             return cloudinary?.gifURL(token: rec.publicToken)
@@ -1945,6 +1984,80 @@ final class BoothController: ObservableObject {
     /// Deliberately literal: whatever cannot be built is simply not shown. A
     /// silent substitution would put a code on the screen that sends guests
     /// somewhere the operator never chose.
+    // MARK: - Serving from this Mac
+
+    /// Starts, stops or re-points the local gallery to match the settings.
+    ///
+    /// Everything about it is recoverable: a port already taken, a network that
+    /// has not come up, a booth carried between rooms. The operator is told
+    /// once, the codes fall back to the online address, and the next session
+    /// tries again.
+    func applyLocalServing(_ s: AppSettings) {
+        guard s.localServeEnabled else {
+            if LocalGalleryServer.shared.isRunning { LocalGalleryServer.shared.stop() }
+            localServing = false
+            localServeError = nil
+            localAddress = nil
+            wifiQRImage = nil
+            return
+        }
+        do {
+            _ = try LocalGalleryServer.shared.start(port: UInt16(max(1024, min(s.localServePort, 65535))))
+            localServing = true
+            localServeError = nil
+        } catch {
+            localServing = false
+            localServeError = error.localizedDescription
+            log.warn("Local gallery: \(error.localizedDescription)")
+        }
+        refreshLocalAddress()
+        publishLocalSessions()
+        wifiQRImage = WiFiQR.payload(ssid: s.localWiFiSSID, password: s.localWiFiPassword)
+            .flatMap { QRCode.image(for: $0, minimumSide: 360) }
+    }
+
+    /// Re-reads this Mac's address. DHCP hands out a different one at every
+    /// venue — and sometimes at the same venue after a router reboot — so this
+    /// is checked rather than remembered.
+    func refreshLocalAddress() {
+        let found = LocalGalleryServer.host(override: settings.localServeHost)
+        if found != localAddress { localAddress = found }
+    }
+
+    /// Hands the server a fresh snapshot of every finished session, so a booth
+    /// restarted in the middle of an event still answers the codes already in
+    /// people's pockets.
+    func publishLocalSessions() {
+        guard settings.localServeEnabled else { return }
+        let events = Dictionary(uniqueKeysWithValues: storage.events.map { ($0.id, $0.name) })
+        let list: [LocalGalleryServer.Session] = storage.sessions
+            .filter { $0.finishedAt != nil && !$0.publicToken.isEmpty }
+            .map { rec in
+                LocalGalleryServer.Session(
+                    token: rec.publicToken,
+                    eventName: events[rec.eventID] ?? settings.eventTitle,
+                    startedAt: rec.startedAt,
+                    directory: storage.directory(for: rec),
+                    photoFiles: rec.photos.sorted { $0.index < $1.index }.map(\.fileName),
+                    printFile: rec.printFileName,
+                    gifFile: GIFRenderer.enabled ? rec.gifFileName : nil)
+            }
+        LocalGalleryServer.shared.publish(sessions: list,
+                                          siteTitle: settings.eventTitle,
+                                          brandLink: customQRURL?.absoluteString,
+                                          brandLabel: settings.customQRCaption)
+    }
+
+    /// This session's address on the venue's own network — nil when serving is
+    /// off, the Mac is on no network, or the session has no token yet.
+    func localURL(for rec: SessionRecord) -> URL? {
+        guard settings.localServeEnabled, localServing, !rec.publicToken.isEmpty,
+              let host = localAddress
+        else { return nil }
+        return LocalGalleryServer.sessionURL(token: rec.publicToken, host: host,
+                                             port: LocalGalleryServer.shared.port)
+    }
+
     func qrPayloads(for rec: SessionRecord) -> (album: String?, brand: String?) {
         let album = galleryURL(for: rec)?.absoluteString
         let brand = customQRURL?.absoluteString
@@ -1975,6 +2088,12 @@ final class BoothController: ObservableObject {
     /// is scanned at home, by which time the upload has long since caught up.
     func makeQR(for rec: SessionRecord, side: CGFloat = 600) -> NSImage? {
         guard settings.showQRCode || settings.printQRCode else { return nil }
+        // Served from this Mac when it can be: the photographs are already here,
+        // so there is nothing to wait for and no internet to depend on. The
+        // sheet's own code is built separately and keeps the lasting address.
+        if let local = localURL(for: rec) {
+            return QRCode.image(for: local.absoluteString, minimumSide: side)
+        }
         if settings.qrRequiresUpload && rec.uploadState != .uploaded { return nil }
         guard let payload = qrPayloads(for: rec).album else { return nil }
         return QRCode.image(for: payload, minimumSide: side)

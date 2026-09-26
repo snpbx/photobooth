@@ -448,9 +448,26 @@ private struct CompleteCentre: View {
 
     private struct QRCard { let image: NSImage; let caption: String }
 
+    /// The whole set of codes as tiles, in the order a guest works through
+    /// them: join the network, then everything they can take away.
+    private var gridTiles: [(String, NSImage)] {
+        var out: [(String, NSImage)] = []
+        if c.localServing, let wifi = c.wifiQRImage { out.append(("1 · JOIN WIFI", wifi)) }
+        if let all = c.sessionQRImage { out.append(("ALL PHOTOS", all)) }
+        if let gif = c.gifQRImage { out.append(("THE GIF", gif)) }
+        if let brand = c.brandQRImage { out.append((c.settings.customQRCaption, brand)) }
+        out += c.photoQRs.map { ("PHOTO \($0.id)", $0.image) }
+        return out
+    }
+
     private var qrCards: [QRCard] {
         var out: [QRCard] = []
         if let qr = c.sessionQRImage { out.append(QRCard(image: qr, caption: c.settings.qrCaption)) }
+        // First, because nothing else on this screen works until they are on the
+        // network: a guest who cannot join cannot open any of the other codes.
+        if let qr = c.wifiQRImage, c.localServing {
+            out.append(QRCard(image: qr, caption: "1 · JOIN WIFI"))
+        }
         if let qr = c.gifQRImage { out.append(QRCard(image: qr, caption: "SCAN FOR YOUR GIF")) }
         if let qr = c.brandQRImage { out.append(QRCard(image: qr, caption: c.settings.customQRCaption)) }
         return out
@@ -490,11 +507,7 @@ private struct CompleteCentre: View {
                     // session: each guest in a group scans the shot they are in.
                     // The long "scan to get your photos" caption does not fit a
                     // grid tile; beside PHOTO 1, 2, 3, "ALL PHOTOS" says it.
-                    PhotoQRGrid(tiles: (c.sessionQRImage.map { [("ALL PHOTOS", $0)] } ?? [])
-                                    + (c.gifQRImage.map { [("THE GIF", $0)] } ?? [])
-                                    + (c.brandQRImage.map { [(c.settings.customQRCaption, $0)] } ?? [])
-                                    + c.photoQRs.map { ("PHOTO \($0.id)", $0.image) },
-                                m: m)
+                    PhotoQRGrid(tiles: gridTiles, m: m)
                 } else if !cards.isEmpty {
                     VStack(spacing: m.pt(2)) {
                         ForEach(cards, id: \.caption) { card in

@@ -334,6 +334,7 @@ private struct ControlTab: View {
                         AnyView(BoothButtonCard(c: c, trigger: c.trigger)),
                         AnyView(TimingCard(c: c)),
                         AnyView(GallerySiteCard(c: c, uploader: c.uploader)),
+                        AnyView(LocalGalleryCard(c: c)),
                         AnyView(AlbumCard(c: c)),
                         AnyView(BoothWindowCard(c: c)),
                         AnyView(StorageCard(c: c))
