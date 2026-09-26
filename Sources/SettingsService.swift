@@ -59,7 +59,23 @@ final class SettingsService: ObservableObject {
             Log.shared.warn("Some saved settings could not be read; defaults used for those.")
             return fallback
         }
-        return decoded
+        return migrated(decoded)
+    }
+
+    /// Carries settings whose *meaning* changed, which merging cannot see.
+    ///
+    /// `gifSeconds` used to be the run-up replayed from live view, 1–6 seconds;
+    /// it is now how long one photograph is held, 0.3–3. A file saved with the
+    /// old meaning asks for a four-second hold per photograph — a minute-long
+    /// loop for an eight-shot session — and would show as a blank in a picker
+    /// whose options it no longer matches.
+    private static func migrated(_ s: AppSettings) -> AppSettings {
+        var out = s
+        if out.gifSeconds > GIFRenderer.maxSeconds {
+            out.gifSeconds = AppSettings().gifSeconds
+            Log.shared.info("GIF timing carried over to the new one-frame-per-photograph loop")
+        }
+        return out
     }
 
     var settingsFileURL: URL { url }
