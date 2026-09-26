@@ -230,12 +230,17 @@ final class UploadService: ObservableObject {
     func drain() async {
         let configured = settings.galleryHost == .server ? baseURL != nil : publishToPages != nil
         guard settings.uploadEnabled, configured, !isDraining else { return }
+        // Newest first. A guest is standing at the booth waiting for the code on
+        // their strip to work; a backlog from last weekend can wait its turn
+        // behind them.
         let due = queue.filter { $0.nextAttemptAt <= Date() }
+            .sorted { $0.queuedAt > $1.queuedAt }
         guard !due.isEmpty else { return }
         guard await checkReachability() else { return }
 
         isDraining = true
         defer { isDraining = false; currentUpload = nil }
+        var failures = 0
 
         for item in due {
             guard queue.contains(where: { $0.id == item.id }) else { continue }
@@ -246,12 +251,21 @@ final class UploadService: ObservableObject {
                 lastSuccessAt = Date()
                 onSessionUploaded?(item.eventID, item.sessionID)
                 Log.shared.info("Uploaded \(item.eventID)/\(item.sessionID)")
+                failures = 0
             } catch UploadError.missingFiles(let id) {
                 // The session was deleted after being queued. Retrying can never
                 // fix that, and one dead entry must not block everything behind
                 // it — drop it and carry on with the rest.
                 remove(eventID: item.eventID, sessionID: item.sessionID)
                 Log.shared.warn("Dropped \(id) from the upload queue — its files are gone")
+                continue
+            } catch CloudinaryError.nothingToUpload {
+                // A session with nothing the current settings would send: no
+                // print, and originals switched off. No amount of retrying
+                // changes that, and left in the queue it fails every minute for
+                // ever — in front of sessions that would have gone up fine.
+                remove(eventID: item.eventID, sessionID: item.sessionID)
+                Log.shared.warn("Dropped \(item.sessionID) from the upload queue — it has nothing the current settings would upload")
                 continue
             } catch {
                 let message = (error as? LocalizedError)?.errorDescription ?? friendly(error)
@@ -265,8 +279,14 @@ final class UploadService: ObservableObject {
                 }
                 onSessionFailed?(item.eventID, item.sessionID, message)
                 Log.shared.error("Upload failed for \(item.sessionID): \(message)")
-                // One bad network means the rest will fail too; stop and retry later.
-                break
+                // One failure is this session's problem; two in a row is the
+                // network's, and there is no point marching the whole queue into
+                // a dead connection. Anything skipped keeps its place for the
+                // next pass — what must not happen is one bad session standing
+                // in front of the one a guest is waiting for.
+                failures += 1
+                if failures >= 2 { break }
+                continue
             }
         }
     }

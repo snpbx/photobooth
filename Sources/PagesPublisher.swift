@@ -242,6 +242,28 @@ struct PagesPublisher {
                          bytes: bytes)
     }
 
+    /// Puts an empty page at the session's address before the photographs exist,
+    /// so the code printed on the strip is live by the time the strip is.
+    func writeHoldingPage(session rec: SessionRecord, event: EventRecord, token: String) throws {
+        guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
+        let dir = repo.appendingPathComponent(Self.sessionPath(token: token), isDirectory: true)
+        // Never over a page that already has photographs on it: a retake
+        // republishes, and a holding page landing on top of a finished one would
+        // take a guest's pictures away again.
+        let index = dir.appendingPathComponent("index.html")
+        if let existing = try? String(contentsOf: index, encoding: .utf8),
+           !existing.contains("Nearly<br>there") {
+            return
+        }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let page = PagesTemplate.holdingPage(siteTitle: siteTitle,
+                                             eventName: event.name,
+                                             startedAt: rec.startedAt,
+                                             brandLink: brandLink,
+                                             brandLabel: brandLabel)
+        try page.data(using: .utf8)!.write(to: index)
+    }
+
     /// Writes one session's page. Split out so the Cloudinary hybrid can put the
     /// page here while the photographs live on a CDN — the page is only ever a
     /// few kilobytes, which is what keeps the repository small.
@@ -289,8 +311,17 @@ struct PagesPublisher {
 
     /// Commits everything written so far and pushes it. One commit per session
     /// keeps the history readable when something has to be traced back.
+    /// One git at a time, whatever is asking.
+    ///
+    /// Two pushes now overlap by design — the holding page as a session starts,
+    /// the real one as it finishes — and git in one repository from two threads
+    /// is how index.lock errors and half-made commits happen.
+    private static let gitLock = NSLock()
+
     func commitAndPush(message: String) throws {
         guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
+        Self.gitLock.lock()
+        defer { Self.gitLock.unlock() }
         try Self.git(["add", "-A"], in: repo)
         // An empty commit means the session was already published — not an error.
         _ = try? Self.git(["commit", "-m", message], in: repo)

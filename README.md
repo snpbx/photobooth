@@ -437,6 +437,37 @@ Admin for an operator who always brings the same router.
 macOS will ask once for permission to accept incoming connections — the booth
 cannot be reached until that is allowed.
 
+## Getting the printed code working at once
+
+GitHub Pages takes **twenty-odd seconds to build whatever is pushed to it**
+(measured on this site: three seconds to push, twenty-three to build). For most
+of a guest's first minute, a code printed on their strip would lead to a 404 —
+and a guest who scans a fresh print and gets "not found" concludes the booth
+lost their photographs.
+
+So **the page is pushed when the session starts, not when it ends.** The session's
+token is assigned when the folder is created, so its address is known before the
+first shot: a holding page goes up immediately, GitHub builds it while the guests
+are still posing, and the real page replaces it when the photographs land. The
+holding page refreshes itself every ten seconds — somebody standing in a marquee
+holding a strip will not pull-to-refresh on a promise — and it never overwrites a
+page that already has photographs on it, so a retake cannot take a guest's
+pictures away again. Git is serialised behind a lock, because the two pushes now
+overlap by design.
+
+**The upload queue no longer lets one session block the rest.** It had been
+draining oldest-first and *breaking out of the loop* on the first failure, so ten
+sessions from a previous event — all failing permanently, because they had no
+print and originals were switched off — sat in front of every new session and
+kept it waiting through their exponential backoff. Now:
+
+* sessions are attempted **newest first**, since a guest at the booth is waiting
+  and last weekend's backlog is not;
+* a failure that can never succeed (**nothing to upload**, files deleted) drops
+  out of the queue instead of failing for ever in front of everything else;
+* one failure moves on to the next session; only two in a row stop the pass,
+  which is what a dead network actually looks like.
+
 ## Session pages and per-photo codes
 
 Every session gets its own webpage, and every photograph its own code on the

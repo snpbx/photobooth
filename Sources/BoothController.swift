@@ -719,6 +719,7 @@ final class BoothController: ObservableObject {
         updateLiveViewDesire()
 
         plannedShots = total
+        reserveSessionPage(rec)
         sessionTask = Task { [weak self] in await self?.runSession(total: total) }
     }
 
@@ -1984,6 +1985,36 @@ final class BoothController: ObservableObject {
     /// Deliberately literal: whatever cannot be built is simply not shown. A
     /// silent substitution would put a code on the screen that sends guests
     /// somewhere the operator never chose.
+    /// Pushes an empty page at this session's address as it starts.
+    ///
+    /// GitHub Pages takes twenty-odd seconds to build a push, so a code printed
+    /// on a strip leads nowhere for the first half-minute of its life — which is
+    /// exactly when a guest scans it. The token is assigned when the session is
+    /// created, so the address is known before the first shot: pushing a holding
+    /// page now means the build happens while the guests are still posing, and
+    /// the real page replaces it when the photographs land.
+    ///
+    /// Deliberately best-effort and off the main actor. A booth with no
+    /// connection carries on exactly as before; it simply has nothing to reserve.
+    private func reserveSessionPage(_ rec: SessionRecord) {
+        guard settings.uploadEnabled, !rec.publicToken.isEmpty else { return }
+        guard settings.galleryHost == .githubPages || settings.galleryHost == .cloudinary else { return }
+        guard let publisher = pagesPublisher() else { return }
+        guard let event = activeEvent else { return }
+        let token = rec.publicToken
+        Task.detached(priority: .utility) {
+            do {
+                try publisher.writeHoldingPage(session: rec, event: event, token: token)
+                try publisher.commitAndPush(message: "\(event.name) — \(rec.id) starting")
+                Log.shared.info("Reserved the page for \(rec.id) while the session runs")
+            } catch {
+                // Nothing is broken by this failing: the page is published again
+                // when the session finishes, as it always was.
+                Log.shared.warn("Could not reserve the page for \(rec.id): \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Serving from this Mac
 
     /// Starts, stops or re-points the local gallery to match the settings.

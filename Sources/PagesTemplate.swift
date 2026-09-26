@@ -334,6 +334,42 @@ enum PagesTemplate {
             + "<span class=\"name\">\(esc(name))</span><span class=\"pill\">\(pill)</span></a>"
     }
 
+    /// The page that exists before the photographs do.
+    ///
+    /// GitHub Pages takes twenty-odd seconds to build whatever is pushed to it,
+    /// which is twenty-odd seconds during which a code printed on a strip leads
+    /// to a 404 and a guest concludes the booth lost their pictures. So the page
+    /// is pushed when the session *starts*: by the time the strip is in their
+    /// hand it is built and live, and it replaces itself with the real one as
+    /// soon as the photographs land.
+    ///
+    /// It refreshes itself rather than asking to be reloaded. Somebody standing
+    /// in a marquee holding a strip will not pull-to-refresh on a promise; they
+    /// will put the phone away.
+    static func holdingPage(siteTitle: String,
+                            eventName: String,
+                            startedAt: Date,
+                            brandLink: String? = nil,
+                            brandLabel: String = "") -> String {
+        var html = head("Your photos — \(eventName)", siteTitle: siteTitle)
+        html = html.replacingOccurrences(
+            of: "<meta name=\"theme-color\"",
+            with: "<meta http-equiv=\"refresh\" content=\"10\">\n<meta name=\"theme-color\"")
+        html += """
+        <header class="hero pad">
+          <div><p class="eyebrow" lang="ja">もうすぐ</p><h1 class="long">Nearly<br>there</h1></div>
+          <p class="tag"><b>\(esc(eventName))</b>\(dateFormatter.string(from: startedAt)) · \(timeFormatter.string(from: startedAt))</p>
+        </header>
+        <nav class="bands">
+          <span class="band pad"><span class="name">Your photographs are uploading</span>
+          <span class="pill">Wait ↻</span></span>
+        </nav>
+        <div class="pad"><p class="note">This page refreshes itself every few seconds. Keep it open — your
+        photographs appear here as soon as the booth has sent them, usually within a minute of your last shot.</p></div>
+        """
+        return html + foot(brandLink: brandLink, brandLabel: brandLabel)
+    }
+
     static func sessionPage(siteTitle: String,
                             event: EventRecord,
                             session: SessionRecord,
