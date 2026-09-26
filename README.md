@@ -43,7 +43,11 @@ cannot start without an event selected, and the Start button carries the client'
 name.
 
 **Turned slots and stickers** — anything on a print layout can be set at an
-angle, by dragging its handle or typing the degrees.
+angle, by dragging its handle or typing the degrees, against a grid and rulers
+that snap.
+
+**A printed cutting line** — a faint dotted line down the middle of a sheet that
+holds two strips, so they can be cut apart cleanly.
 
 **A GIF for every session** — each photograph filling a page in the print's own
 branding, saved beside the photographs, uploaded with them, and carrying its own
@@ -561,6 +565,27 @@ Drags are measured against the sheet rather than the item, because a turned item
 has turned axes of its own and a drag read in those would send it off at the
 angle it was pinned at; the resize handle does the opposite, reading the movement
 back onto the item's own axes so width stays width.
+
+**Guides, rulers and snapping.** A square grid taken from the sheet's short edge,
+rulers down the top and left marked in whichever unit the placement fields are
+showing — with the selected item's extent picked out on them — and snapping to
+the grid, to the sheet's own middle, and to the edges and centres of everything
+already on the page, which is what lines two slots up without either being typed.
+Moving snaps by whichever of an item's three edges is nearest, so a box can be
+aligned by its left, its middle or its right without being told which; resizing
+snaps only the edge being dragged, so pulling a corner never shifts the opposite
+one. The tolerance is a fraction of the sheet rather than screen points, so what
+counts as near enough does not change when the window is resized. All three are
+per-window preferences, not part of the layout: a grid is how somebody works, not
+part of what they made.
+
+**The cutting line** is the one guide that is printed. A faint dotted line down
+(or across) the middle at the operator's own opacity and position, drawn over
+everything except the guest code, so a sheet holding two strips can be cut apart
+cleanly at a venue where the guillotine is a pair of scissors. Low opacity is the
+trick: dark enough to follow under bad lighting, light enough that a millimetre
+left on an edge does not read as a mistake. It never appears in the GIF, which is
+never cut.
 
 Two things the editor does deliberately:
 

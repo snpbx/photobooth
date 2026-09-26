@@ -61,6 +61,12 @@ struct PrintEditorView: View {
     @State private var proof: NSImage?
     @State private var dirty = false
     @State private var unit: PlacementUnit = .percent
+    @State private var showGrid = true
+    @State private var showRulers = true
+    @State private var snapping = true
+    /// Divisions across the sheet's short edge. Twelve is an inch of a 4in sheet
+    /// cut into thirds — the spacing most of these layouts already fall on.
+    @State private var gridDivisions = 12
 
     /// - Parameter templateID: which layout to open. Nil starts a new one seeded
     ///   from the selected built-in, so the editor never opens on a blank sheet.
@@ -151,16 +157,40 @@ struct PrintEditorView: View {
 
     // MARK: - Canvas
 
+    /// Width of the ruler gutters. Wide enough for a two-digit label at the size
+    /// the rest of the console uses, and no wider: every point here is a point
+    /// the sheet does not get.
+    private static let rulerGutter: CGFloat = 22
+
     private var canvasPane: some View {
         GeometryReader { geo in
             // The sheet keeps the printer's own proportions whatever the window
             // does, so nothing is arranged against a shape that will not print.
-            let sheet = fit(CGSize(width: 4, height: 6), in: CGSize(width: geo.size.width - 48,
-                                                                   height: geo.size.height - 48))
+            let gutter = showRulers ? Self.rulerGutter : 0
+            let sheet = fit(CGSize(width: 4, height: 6),
+                            in: CGSize(width: geo.size.width - 48 - gutter,
+                                       height: geo.size.height - 48 - gutter))
             ZStack {
                 Color.clear
-                sheetView(sheet)
-                    .frame(width: sheet.width, height: sheet.height)
+                VStack(spacing: 0) {
+                    if showRulers {
+                        HStack(spacing: 0) {
+                            Color.clear.frame(width: gutter, height: gutter)
+                            Ruler(axis: .horizontal, length: sheet.width, divisions: gridDivisions,
+                                  unit: unit, settings: c.settings, highlight: highlight(.horizontal))
+                                .frame(width: sheet.width, height: gutter)
+                        }
+                    }
+                    HStack(spacing: 0) {
+                        if showRulers {
+                            Ruler(axis: .vertical, length: sheet.height, divisions: gridDivisions,
+                                  unit: unit, settings: c.settings, highlight: highlight(.vertical))
+                                .frame(width: gutter, height: sheet.height)
+                        }
+                        sheetView(sheet)
+                            .frame(width: sheet.width, height: sheet.height)
+                    }
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .contentShape(Rectangle())
@@ -169,9 +199,20 @@ struct PrintEditorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The selected item's extent, for the ruler to mark off — a ruler with
+    /// nothing on it only tells you how long the paper is.
+    private func highlight(_ axis: Axis) -> ClosedRange<Double>? {
+        guard let id = selection, let r = rect(of: id) else { return nil }
+        return axis == .horizontal ? r.x...(r.x + r.w) : r.y...(r.y + r.h)
+    }
+
     private func sheetView(_ sheet: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
             Color(hex: draft.backgroundHex)
+
+            if showGrid {
+                GridLines(divisions: gridDivisions, sheet: sheet)
+            }
 
             ForEach(draft.overlays.filter(\.behindPhotos)) { o in
                 overlayView(o, sheet: sheet)
@@ -190,6 +231,13 @@ struct PrintEditorView: View {
                                   lineWidth: max(1, draft.border.width * sheet.width))
                     .padding(inset)
                     .allowsHitTesting(false)
+            }
+
+            // Shown exactly as it prints — faint, dotted, and in its place —
+            // because the question being answered is whether it lands where the
+            // scissors go, not whether it is visible on a screen.
+            if let cut = draft.cutGuide {
+                CutGuideLine(cut: cut, sheet: sheet)
             }
 
             if let q = draft.qr {
@@ -318,6 +366,7 @@ struct PrintEditorView: View {
                 r.x += v.translation.width / sheet.width
                 r.y += v.translation.height / sheet.height
                 r.clamp()
+                r = snapMoved(r, id: id)
                 setRect(r, of: id)
             }
             .onEnded { _ in dragOrigin = nil; dirty = true }
@@ -335,6 +384,7 @@ struct PrintEditorView: View {
                 r.w += d.width / sheet.width
                 r.h += d.height / sheet.height
                 r.clamp()
+                r = snapResized(r, id: id)
                 setRect(r, of: id)
             }
             .onEnded { _ in dragOrigin = nil; dirty = true }
@@ -383,7 +433,15 @@ struct PrintEditorView: View {
                         dirty = true
                     }
                     .buttonStyle(QuietButtonStyle())
+                    Button(draft.cutGuide == nil ? "Cutting line" : "Remove cutting line") {
+                        draft.cutGuide = draft.cutGuide == nil ? CutGuide() : nil
+                        dirty = true
+                    }
+                    .buttonStyle(QuietButtonStyle())
                 }
+
+                canvasCard
+                if draft.cutGuide != nil { cutCard }
 
                 photosCard
 
@@ -521,6 +579,65 @@ struct PrintEditorView: View {
 
             Button("Add photo slot") { addSlot() }
                 .buttonStyle(QuietButtonStyle())
+        }
+    }
+
+    /// The aids: on screen only, and remembered for as long as the window is
+    /// open rather than saved with the layout — a grid is how somebody works,
+    /// not part of what they made.
+    private var canvasCard: some View {
+        SectionCard(title: "Guides") {
+            Toggle("Grid", isOn: $showGrid).font(.system(size: 12))
+            Toggle("Rulers", isOn: $showRulers).font(.system(size: 12))
+            Toggle("Snap to grid and edges", isOn: $snapping).font(.system(size: 12))
+
+            LabeledRow(label: "Grid",
+                       help: "Squares across the short edge. Things snap to these, to the sheet's middle, and to the edges and centres of everything already on it.") {
+                Picker("", selection: $gridDivisions) {
+                    Text("8").tag(8)
+                    Text("12").tag(12)
+                    Text("16").tag(16)
+                    Text("24").tag(24)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 170)
+                .disabled(!showGrid && !snapping)
+            }
+        }
+    }
+
+    /// The one thing here that is printed rather than drawn for the operator.
+    private var cutCard: some View {
+        SectionCard(title: "Cutting line") {
+            Text("Printed faintly on the sheet so two strips can be cut apart cleanly. It is drawn over everything except the guest code.")
+                .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LabeledRow(label: "Direction") {
+                Picker("", selection: Binding(
+                    get: { draft.cutGuide?.orientation ?? .vertical },
+                    set: { draft.cutGuide?.orientation = $0; dirty = true })) {
+                        ForEach(CutGuide.Orientation.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden().frame(width: 180)
+            }
+
+            percentRow("Position", Binding(
+                get: { draft.cutGuide?.position ?? 0.5 },
+                set: { draft.cutGuide?.position = $0; dirty = true }), range: 0.05...0.95)
+
+            percentRow("Opacity", Binding(
+                get: { draft.cutGuide?.opacity ?? 0.25 },
+                set: { draft.cutGuide?.opacity = $0; dirty = true }), range: 0.05...1)
+
+            LabeledRow(label: "Back to the middle") {
+                Button("Centre") { draft.cutGuide?.position = 0.5; dirty = true }
+                    .buttonStyle(QuietButtonStyle())
+            }
+
+            Button("Remove") { draft.cutGuide = nil; dirty = true }
+                .buttonStyle(QuietButtonStyle(destructive: true))
         }
     }
 
@@ -755,6 +872,93 @@ struct PrintEditorView: View {
         return nil
     }
 
+    // MARK: - Snapping
+    //
+    // Within a hair of a line, take the line. The tolerance is in fractions of
+    // the sheet rather than screen points on purpose: what counts as "near
+    // enough" should not change because somebody resized the window.
+
+    private static let snapTolerance = 0.006
+
+    /// Every line worth landing on, on one axis: the grid, the sheet's own edges
+    /// and middle, and the edges and centres of everything else on the page —
+    /// which is what makes two slots line up without either one being typed.
+    private func snapLines(_ axis: Axis, excluding id: String) -> [Double] {
+        var out: [Double] = [0, 0.5, 1]
+        let steps = max(2, gridDivisions)
+        // The grid is square, so the long axis carries more divisions than the
+        // short one — otherwise the cells would be rectangles and lining
+        // anything up across the two would be guesswork.
+        let count = axis == .horizontal ? steps : Int((Double(steps) * 1.5).rounded())
+        for i in 0...count { out.append(Double(i) / Double(count)) }
+
+        func add(_ r: NormRect) {
+            if axis == .horizontal { out += [r.x, r.x + r.w / 2, r.x + r.w] }
+            else { out += [r.y, r.y + r.h / 2, r.y + r.h] }
+        }
+        for s in draft.slots where s.id != id { add(s.rect) }
+        for o in draft.overlays where o.id != id { add(o.rect) }
+        if id != "qr", let q = draft.qr { add(q) }
+        if let cut = draft.cutGuide,
+           (cut.orientation == .vertical) == (axis == .horizontal) {
+            out.append(cut.position)
+        }
+        return out
+    }
+
+    /// The nearest line, and how far it is — nil when nothing is close enough.
+    private func nearest(_ value: Double, _ lines: [Double]) -> Double? {
+        var best: Double?
+        var bestGap = Self.snapTolerance
+        for line in lines {
+            let gap = abs(line - value)
+            if gap <= bestGap { bestGap = gap; best = line }
+        }
+        return best
+    }
+
+    /// Moving snaps by whichever of the three edges is closest, so a box can be
+    /// aligned by its left, its middle or its right without being told which.
+    private func snapMoved(_ rect: NormRect, id: String) -> NormRect {
+        guard snapping else { return rect }
+        var r = rect
+        let xs = snapLines(.horizontal, excluding: id)
+        let ys = snapLines(.vertical, excluding: id)
+        var bestX: (delta: Double, gap: Double)?
+        for edge in [r.x, r.x + r.w / 2, r.x + r.w] {
+            if let line = nearest(edge, xs) {
+                let gap = abs(line - edge)
+                if bestX == nil || gap < bestX!.gap { bestX = (line - edge, gap) }
+            }
+        }
+        var bestY: (delta: Double, gap: Double)?
+        for edge in [r.y, r.y + r.h / 2, r.y + r.h] {
+            if let line = nearest(edge, ys) {
+                let gap = abs(line - edge)
+                if bestY == nil || gap < bestY!.gap { bestY = (line - edge, gap) }
+            }
+        }
+        r.x += bestX?.delta ?? 0
+        r.y += bestY?.delta ?? 0
+        r.clamp()
+        return r
+    }
+
+    /// Resizing moves one corner, so only the far edges snap — pulling the
+    /// bottom-right corner must never shift the top-left one.
+    private func snapResized(_ rect: NormRect, id: String) -> NormRect {
+        guard snapping else { return rect }
+        var r = rect
+        if let line = nearest(r.x + r.w, snapLines(.horizontal, excluding: id)) {
+            r.w = max(0.04, line - r.x)
+        }
+        if let line = nearest(r.y + r.h, snapLines(.vertical, excluding: id)) {
+            r.h = max(0.04, line - r.y)
+        }
+        r.clamp()
+        return r
+    }
+
     private func rotation(of id: String) -> Double {
         if let s = draft.slots.first(where: { $0.id == id }) { return s.rotation }
         if let o = draft.overlays.first(where: { $0.id == id }) { return o.rotation }
@@ -862,5 +1066,152 @@ struct PrintEditorView: View {
         guard bounds.width > 0, bounds.height > 0 else { return .zero }
         let scale = min(bounds.width / ratio.width, bounds.height / ratio.height)
         return CGSize(width: ratio.width * scale, height: ratio.height * scale)
+    }
+}
+
+// MARK: - Canvas furniture
+
+/// The grid the sheet is arranged against.
+///
+/// Drawn from the short edge so the cells are square: a grid whose divisions
+/// count differently across than down is no use for lining two things up, which
+/// is the only thing a grid is for.
+private struct GridLines: View {
+    let divisions: Int
+    let sheet: CGSize
+
+    var body: some View {
+        Canvas { ctx, size in
+            let step = size.width / CGFloat(max(2, divisions))
+            var x = step
+            while x < size.width - 0.5 {
+                ctx.stroke(Path { $0.move(to: CGPoint(x: x, y: 0)); $0.addLine(to: CGPoint(x: x, y: size.height)) },
+                           with: .color(.black.opacity(0.07)), lineWidth: 1)
+                x += step
+            }
+            var y = step
+            while y < size.height - 0.5 {
+                ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: y)); $0.addLine(to: CGPoint(x: size.width, y: y)) },
+                           with: .color(.black.opacity(0.07)), lineWidth: 1)
+                y += step
+            }
+            // The halves, heavier: centring something by eye is the commonest
+            // thing done here and the middle is where it is done against.
+            ctx.stroke(Path { $0.move(to: CGPoint(x: size.width / 2, y: 0))
+                              $0.addLine(to: CGPoint(x: size.width / 2, y: size.height)) },
+                       with: .color(.black.opacity(0.16)), lineWidth: 1)
+            ctx.stroke(Path { $0.move(to: CGPoint(x: 0, y: size.height / 2))
+                              $0.addLine(to: CGPoint(x: size.width, y: size.height / 2)) },
+                       with: .color(.black.opacity(0.16)), lineWidth: 1)
+        }
+        .frame(width: sheet.width, height: sheet.height)
+        .allowsHitTesting(false)
+    }
+}
+
+/// A ruler down one edge of the sheet, marked in whichever unit the inspector is
+/// showing, with the selected item's extent picked out on it.
+private struct Ruler: View {
+    let axis: Axis
+    let length: CGFloat
+    let divisions: Int
+    let unit: PlacementUnit
+    let settings: AppSettings
+    var highlight: ClosedRange<Double>?
+
+    var body: some View {
+        Canvas { ctx, size in
+            let along = axis == .horizontal ? size.width : size.height
+            let thick = axis == .horizontal ? size.height : size.width
+
+            if let h = highlight {
+                let a = CGFloat(min(max(h.lowerBound, 0), 1)) * along
+                let b = CGFloat(min(max(h.upperBound, 0), 1)) * along
+                let band = axis == .horizontal
+                    ? CGRect(x: a, y: 0, width: max(1, b - a), height: thick)
+                    : CGRect(x: 0, y: a, width: thick, height: max(1, b - a))
+                ctx.fill(Path(band), with: .color(.black.opacity(0.10)))
+            }
+
+            // The grid's squares come from the short edge, so the long edge
+            // carries proportionally more of them. A ruler whose ticks fall
+            // between the grid lines is worse than no ruler.
+            let steps = axis == .horizontal
+                ? max(2, divisions)
+                : max(2, Int((Double(divisions) * 1.5).rounded()))
+            for i in 0...steps {
+                let f = CGFloat(i) / CGFloat(steps)
+                // Every step is ticked; every third is ticked long and labelled,
+                // so the numbers do not run into each other on a small window.
+                let major = i % 3 == 0
+                let p = f * along
+                let len = major ? thick * 0.55 : thick * 0.3
+                let tick = axis == .horizontal
+                    ? Path { $0.move(to: CGPoint(x: p, y: thick - len)); $0.addLine(to: CGPoint(x: p, y: thick)) }
+                    : Path { $0.move(to: CGPoint(x: thick - len, y: p)); $0.addLine(to: CGPoint(x: thick, y: p)) }
+                ctx.stroke(tick, with: .color(.black.opacity(major ? 0.45 : 0.25)), lineWidth: 1)
+
+                guard major, i < steps else { continue }
+                let value = Double(f) * span
+                let text = Text(label(value))
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundColor(Palette.midGray)
+                let at = axis == .horizontal
+                    ? CGPoint(x: p + 9, y: thick * 0.32)
+                    : CGPoint(x: thick * 0.40, y: p + 9)
+                ctx.draw(text, at: at, anchor: .center)
+            }
+        }
+        .background(Palette.surfaceAlt)
+        .allowsHitTesting(false)
+    }
+
+    /// How much of the sheet one unit covers on this axis — the ruler and the
+    /// placement fields have to agree or one of them is lying.
+    private var span: Double {
+        switch unit {
+        case .percent: return 100
+        case .pixels:  return axis == .horizontal
+                            ? Double(settings.pixelSize.width) : Double(settings.pixelSize.height)
+        case .inches:  return axis == .horizontal ? 4 : 6
+        }
+    }
+
+    private func label(_ v: Double) -> String {
+        switch unit {
+        case .percent: return String(Int(v.rounded()))
+        case .pixels:  return String(Int(v.rounded()))
+        case .inches:  return String(format: "%.1f", v)
+        }
+    }
+}
+
+/// The cutting line as it will print: position, dash and opacity all real.
+private struct CutGuideLine: View {
+    let cut: CutGuide
+    let sheet: CGSize
+
+    var body: some View {
+        Canvas { ctx, size in
+            let long = max(size.width, size.height)
+            let p = CGFloat(min(max(cut.position, 0.02), 0.98))
+            let inset = CGFloat(max(0, cut.inset)) * long
+            let path = Path { path in
+                switch cut.orientation {
+                case .vertical:
+                    path.move(to: CGPoint(x: size.width * p, y: inset))
+                    path.addLine(to: CGPoint(x: size.width * p, y: size.height - inset))
+                case .horizontal:
+                    path.move(to: CGPoint(x: inset, y: size.height * p))
+                    path.addLine(to: CGPoint(x: size.width - inset, y: size.height * p))
+                }
+            }
+            let style = StrokeStyle(lineWidth: max(1, CGFloat(cut.width) * size.width),
+                                    dash: [max(2, CGFloat(cut.dash) * long),
+                                           max(2, CGFloat(cut.gap) * long)])
+            ctx.stroke(path, with: .color(Color(hex: cut.colorHex).opacity(cut.opacity)), style: style)
+        }
+        .frame(width: sheet.width, height: sheet.height)
+        .allowsHitTesting(false)
     }
 }

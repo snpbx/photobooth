@@ -22,6 +22,9 @@ struct PrintTemplate: Codable, Identifiable, Hashable {
     /// Optional because a template that carries no code is a perfectly good
     /// template — the finish screen still shows one.
     var qr: NormRect?
+    /// The dotted line the operator cuts along. Optional because most sheets are
+    /// not cut at all — only the ones printed two strips to a page.
+    var cutGuide: CutGuide?
     var updatedAt = Date()
 
     /// Photographs this sheet needs before it can be printed. Distinct indices,
@@ -31,6 +34,37 @@ struct PrintTemplate: Codable, Identifiable, Hashable {
     }
 
     var isEmpty: Bool { slots.isEmpty && overlays.isEmpty }
+}
+
+/// The line a sheet is cut along, printed faintly so the cut has something to
+/// follow and the halves carry no visible mark afterwards.
+///
+/// Printed rather than drawn on screen only: a guillotine at a venue is a pair of
+/// scissors and somebody's judgement, and a line down the middle of the paper is
+/// the difference between two clean strips and two crooked ones. Low opacity is
+/// the whole trick — dark enough to follow under venue lighting, light enough
+/// that a millimetre of it left on an edge does not read as a mistake.
+struct CutGuide: Codable, Hashable {
+    enum Orientation: String, Codable, CaseIterable, Identifiable {
+        case vertical, horizontal
+        var id: String { rawValue }
+        var title: String { self == .vertical ? "Down the middle" : "Across the middle" }
+    }
+
+    var orientation: Orientation = .vertical
+    /// Where it sits, as a fraction across the sheet. Half is the whole point of
+    /// it, but a sheet cut into unequal parts is somebody's layout, not an error.
+    var position: Double = 0.5
+    var opacity: Double = 0.25
+    /// Fraction of the canvas width, so the line holds its weight at any DPI.
+    var width: Double = 0.0025
+    /// Dash and gap, as fractions of the canvas's long edge.
+    var dash: Double = 0.012
+    var gap: Double = 0.010
+    var colorHex: String = "#000000"
+    /// How far in from the ends the line stops, so it does not run into the
+    /// trimmed edge of a borderless print.
+    var inset: Double = 0.02
 }
 
 /// A rectangle as a fraction of the canvas: 0…1 on both axes, origin top-left.
@@ -100,6 +134,22 @@ struct TemplateOverlay: Codable, Identifiable, Hashable {
 // Losing an operator's library to a new field is not a trade worth making, so
 // both of these are decoded by hand. They live in extensions to keep the
 // memberwise initialiser the rest of the app builds them with.
+
+extension PrintTemplate {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        id            = try c.decodeIfPresent(String.self, forKey: .id)             ?? id
+        name          = try c.decodeIfPresent(String.self, forKey: .name)           ?? name
+        backgroundHex = try c.decodeIfPresent(String.self, forKey: .backgroundHex)  ?? backgroundHex
+        slots         = try c.decodeIfPresent([TemplateSlot].self, forKey: .slots)  ?? slots
+        overlays      = try c.decodeIfPresent([TemplateOverlay].self, forKey: .overlays) ?? overlays
+        border        = try c.decodeIfPresent(TemplateBorder.self, forKey: .border) ?? border
+        qr            = try c.decodeIfPresent(NormRect.self, forKey: .qr)
+        cutGuide      = try c.decodeIfPresent(CutGuide.self, forKey: .cutGuide)
+        updatedAt     = try c.decodeIfPresent(Date.self, forKey: .updatedAt)        ?? updatedAt
+    }
+}
 
 extension TemplateSlot {
     init(from decoder: Decoder) throws {

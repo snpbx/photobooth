@@ -274,6 +274,8 @@ enum LayoutRenderer {
         slot.rotation = 0
         g.slots = [slot]
         g.qr = nil
+        // Nothing is ever cut out of a GIF.
+        g.cutGuide = nil
         return g
     }
 
@@ -345,6 +347,13 @@ enum LayoutRenderer {
                 ctx.addPath(roundedPath(r, radius: b.cornerRadius * canvas.width))
                 ctx.strokePath()
                 ctx.restoreGState()
+            }
+
+            // The cut line goes over everything but the code: it is the last
+            // thing the paper carries, and a photograph printed across the line
+            // is exactly what it is there to be cut through.
+            if let cut = template.cutGuide {
+                drawCutGuide(ctx, cut, canvas: canvas)
             }
 
             if let payload = qrPayload, !payload.isEmpty, let box = template.qr {
@@ -455,6 +464,39 @@ enum LayoutRenderer {
     /// Converts a top-left rect into CoreGraphics' bottom-left space.
     private static func flip(_ r: CGRect, canvasH: CGFloat) -> CGRect {
         CGRect(x: r.minX, y: canvasH - r.maxY, width: r.width, height: r.height)
+    }
+
+    /// The faint dotted line the operator cuts along.
+    ///
+    /// Drawn in the page's own coordinates rather than through `flip`, because a
+    /// line has no top or bottom to get wrong and the inset should read the same
+    /// from either end.
+    private static func drawCutGuide(_ ctx: CGContext, _ cut: CutGuide, canvas: CGSize) {
+        let long = max(canvas.width, canvas.height)
+        let line = max(1, cut.width * canvas.width)
+        let dash = max(2, cut.dash * long)
+        let gap = max(2, cut.gap * long)
+        let inset = max(0, cut.inset) * long
+        let p = min(max(cut.position, 0.02), 0.98)
+
+        ctx.saveGState()
+        ctx.setStrokeColor(cgColor(cut.colorHex).copy(alpha: min(max(cut.opacity, 0.02), 1))
+                            ?? cgColor(cut.colorHex))
+        ctx.setLineWidth(line)
+        ctx.setLineDash(phase: 0, lengths: [dash, gap])
+        ctx.setLineCap(.butt)
+        switch cut.orientation {
+        case .vertical:
+            let x = canvas.width * p
+            ctx.move(to: CGPoint(x: x, y: inset))
+            ctx.addLine(to: CGPoint(x: x, y: canvas.height - inset))
+        case .horizontal:
+            let y = canvas.height * p
+            ctx.move(to: CGPoint(x: inset, y: y))
+            ctx.addLine(to: CGPoint(x: canvas.width - inset, y: y))
+        }
+        ctx.strokePath()
+        ctx.restoreGState()
     }
 
     /// Turns everything drawn after it about the centre of `rect`.
