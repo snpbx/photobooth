@@ -596,6 +596,16 @@ They are built for phones first: fluid type from a 320px iPhone SE up to a
 desktop, gutters that clear the notch and home indicator, 44px-plus tap targets,
 a smaller headline in landscape, and no sideways scrolling at any width.
 
+**The wordmark is the point of this design on a laptop and the problem with it
+on a handset.** At 17vw it ate the first screen, and a guest opening the page
+came for their photographs, not for the typography. Below 430px everything steps
+down together — heading, bands, pills, captions, gutters, card padding — so the
+page keeps its proportions while the photographs come up the screen to meet the
+thumb; below 360px it steps down again and the grid holds two per row, which is
+what makes it read as a sheet rather than a list. The headline runs 35px on a
+320px phone to 51px at 430, then back up its own curve to 150px on a desktop,
+with nothing jumping at the breakpoint.
+
 ## The dry run
 
 A rehearsal of a whole evening, from the Control tab. It photographs imaginary

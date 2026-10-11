@@ -96,9 +96,9 @@ enum PagesTemplate {
     /* Hero wordmark */
     .hero { display:grid; gap:18px; padding-top:clamp(28px,7vw,80px); padding-bottom:clamp(28px,6vw,64px); }
     .eyebrow { margin:0 0 8px; font:400 13px/1 var(--jp); letter-spacing:.14em; color:var(--stone); }
-    h1 { margin:0; font:900 clamp(54px,17.5vw,150px)/.78 var(--display); letter-spacing:-.035em;
+    h1 { margin:0; font:900 clamp(44px,13vw,150px)/.78 var(--display); letter-spacing:-.035em;
          text-transform:uppercase; overflow-wrap:anywhere; hyphens:auto; }
-    h1.long { font-size:clamp(40px,11vw,112px); line-height:.85; }
+    h1.long { font-size:clamp(34px,9.5vw,112px); line-height:.85; }
     .tag { margin:0; font:400 16px/1.25 var(--sans); max-width:34ch; }
     .tag b { display:block; font-weight:700; font-size:18px; margin-bottom:4px; }
     @media (min-width:760px) {
@@ -136,7 +136,7 @@ enum PagesTemplate {
             min-height:84px; margin:0; border:0; border-radius:0; cursor:pointer; text-align:left;
             text-decoration:none; color:var(--ink); background:var(--amber);
             padding-top:clamp(18px,4.5vw,40px); padding-bottom:clamp(18px,4.5vw,40px);
-            font:700 clamp(20px,5.6vw,32px)/1.05 var(--sans); letter-spacing:-.01em; }
+            font:700 clamp(18px,4.8vw,32px)/1.05 var(--sans); letter-spacing:-.01em; }
     .band .name { min-width:0; }
     .band:nth-child(5n+2) { background:var(--ember); }
     .band:nth-child(5n+3) { background:var(--red);    color:var(--cream); }
@@ -153,7 +153,7 @@ enum PagesTemplate {
 
     /* Section header */
     .sec { padding-top:clamp(32px,7vw,80px); }
-    .sec h2 { margin:0 0 clamp(16px,3vw,24px); font:700 clamp(26px,7vw,40px)/1 var(--sans);
+    .sec h2 { margin:0 0 clamp(16px,3vw,24px); font:700 clamp(24px,6vw,40px)/1 var(--sans);
               letter-spacing:-.02em; text-transform:uppercase; }
 
     /* Specimen grid — one continuous sheet of hairlines, no gaps */
@@ -181,6 +181,58 @@ enum PagesTemplate {
     footer p { margin:4px 0; }
     footer a { font-weight:700; overflow-wrap:anywhere; }
     footer .jp { display:block; margin-bottom:12px; font:400 12px/1 var(--jp); letter-spacing:.14em; color:var(--stone); }
+
+    /* Phones.
+       The wordmark is the point of this design on a laptop and the problem with
+       it on a handset: at 17vw it eats the first screen, and the guest came for
+       their photographs, not for the typography. Everything steps down together
+       — heading, bands, pills, captions — so the page keeps its proportions
+       while the photographs come up the screen to meet the thumb. */
+    @media (max-width:430px) {
+      :root { --g:14px; }
+      .bar { min-height:46px; }
+      .mark { font-size:13px; }
+      .bar .jp { font-size:11px; }
+
+      .hero { padding-top:20px; padding-bottom:22px; gap:12px; }
+      .eyebrow { font-size:11px; margin-bottom:6px; }
+      h1 { font-size:clamp(34px,12vw,56px); letter-spacing:-.03em; }
+      h1.long { font-size:clamp(26px,9vw,44px); }
+      .tag { font-size:13.5px; }
+      .tag b { font-size:15px; }
+
+      .card { padding:12px; border-radius:12px; }
+      .card .top { margin-bottom:10px; }
+      .label { font-size:12px; }
+      .media { gap:12px; padding-bottom:18px; }
+
+      .band { min-height:62px; font-size:clamp(16px,4.6vw,20px);
+              padding-top:14px; padding-bottom:14px; gap:10px; }
+      .pill { min-height:40px; padding:0 14px; font-size:12px; }
+      .pill.sm { min-height:32px; padding:0 11px; font-size:11px; }
+
+      .sec { padding-top:26px; }
+      .sec h2 { font-size:clamp(20px,5.6vw,26px); margin-bottom:12px; }
+      .grid { grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); border-radius:12px; }
+      .grid figcaption { padding:8px; }
+      .grid .label { font-size:11px; }
+
+      .note { font-size:13px; padding:14px 16px; border-radius:12px; margin-top:22px; }
+      .empty { padding:32px 0; font-size:13px; }
+      footer { margin-top:30px; font-size:13px; padding-top:22px;
+               padding-bottom:calc(22px + env(safe-area-inset-bottom)); }
+      footer .jp { font-size:11px; margin-bottom:8px; }
+    }
+
+    /* The smallest handsets still in people's pockets — an SE held in one hand
+       is 320 points wide, and two photographs a row is what makes the sheet
+       read as a sheet rather than a list. */
+    @media (max-width:360px) {
+      :root { --g:12px; }
+      h1 { font-size:clamp(30px,11vw,42px); }
+      .band { font-size:16px; min-height:58px; }
+      .grid { grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); }
+    }
     """
 
     private static func head(_ title: String, siteTitle: String) -> String {
