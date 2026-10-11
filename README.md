@@ -729,6 +729,21 @@ about the sheet. Nudges are a percent, ten pixels or a twentieth of an inch; one
 pixel at 300 DPI is a third of a millimetre, which nobody would see and everybody
 would have to press forty times.
 
+**A sheet can carry more than one code.** *Add → QR code box* puts one down and
+the button then offers another; each is selected, dragged, sized and removed on
+its own. Two is the useful number: a sheet cut into strips leaves with two
+different people, and a single code in the middle would be cut in half. Both
+codes carry the same address — they are the same session.
+
+A second box lands as the **mirror image of the first about the cutting line**,
+so the pair sit the same distance in from each outside edge rather than on top
+of one another, and *Match the other side* re-squares them after either is
+moved. Codes are never turned, whichever one it is: the box exists to place the
+code, not to tilt it.
+
+A layout saved when there could only be one code opens with that code in place —
+the old single box is folded into the list on read and never written again.
+
 **Anything on the sheet can be turned.** Photo slots, logos and stickers carry
 an angle in degrees clockwise about their own middle: drag the handle at the
 top-left corner of whatever is selected, type the number, or take a quarter turn

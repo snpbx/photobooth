@@ -301,7 +301,7 @@ enum LayoutRenderer {
         // single full-page frame turned by the same amount only looks broken.
         slot.rotation = 0
         g.slots = [slot]
-        g.qr = nil
+        g.qrBoxes = []
         // Nothing is ever cut out of a GIF.
         g.cutGuide = nil
         return g
@@ -390,7 +390,9 @@ enum LayoutRenderer {
                 // sheet is going to be cut. A layout with no box used to print
                 // no code at all, which is a guest holding a strip with no way
                 // to reach anything.
-                let boxes = template.qr.map { [$0] } ?? autoQRBoxes(for: template)
+                let boxes = template.qrBoxes.isEmpty
+                    ? autoQRBoxes(for: template)
+                    : template.qrBoxes.map(\.rect)
                 for box in boxes {
                     let r = flip(box.rect(in: canvas), canvasH: canvas.height)
                     let side = min(r.width, r.height)

@@ -240,8 +240,8 @@ struct PrintEditorView: View {
                 CutGuideLine(cut: cut, sheet: sheet)
             }
 
-            if let q = draft.qr {
-                box(q, sheet: sheet, id: "qr") {
+            ForEach(draft.qrBoxes) { q in
+                box(q.rect, sheet: sheet, id: q.id) {
                     ZStack {
                         Rectangle().fill(Color.white)
                         Image(systemName: "qrcode")
@@ -307,7 +307,7 @@ struct PrintEditorView: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if selected && id != "qr" {
+                if selected && !isQR(id) {
                     ZStack {
                         Rectangle().fill(Palette.ink)
                         Image(systemName: "arrow.clockwise")
@@ -428,9 +428,8 @@ struct PrintEditorView: View {
                         .buttonStyle(QuietButtonStyle())
                     Button("Image or sticker…") { addOverlay() }
                         .buttonStyle(QuietButtonStyle())
-                    Button(draft.qr == nil ? "QR code box" : "Remove QR box") {
-                        draft.qr = draft.qr == nil ? NormRect(x: 0.72, y: 0.84, w: 0.2, h: 0.13) : nil
-                        dirty = true
+                    Button(draft.qrBoxes.isEmpty ? "QR code box" : "Another QR code box") {
+                        addQRBox()
                     }
                     .buttonStyle(QuietButtonStyle())
                     Button(draft.cutGuide == nil ? "Cutting line" : "Remove cutting line") {
@@ -663,7 +662,7 @@ struct PrintEditorView: View {
             placementRow("Width",  id: id, key: \.w, axis: .horizontal)
             placementRow("Height", id: id, key: \.h, axis: .vertical)
 
-            if id != "qr" {
+            if !isQR(id) {
             LabeledRow(label: "Turn",
                        help: "Degrees clockwise about the middle. The measurements above stay with the upright rectangle, so turning something never moves it — and a turned corner can hang past the paper's edge, which the proof sheet will show.") {
                 HStack(spacing: 6) {
@@ -830,13 +829,23 @@ struct PrintEditorView: View {
                     .buttonStyle(QuietButtonStyle())
                 removeRow { draft.overlays.remove(at: i) }
             }
-        } else if id == "qr" {
-            SectionCard(title: "QR code") {
+        } else if let i = draft.qrBoxes.firstIndex(where: { $0.id == id }) {
+            SectionCard(title: draft.qrBoxes.count > 1 ? "QR code \(i + 1) of \(draft.qrBoxes.count)"
+                                                       : "QR code") {
                 rectControls(id)
-                Text("Drag to place the guest code. It is drawn square inside whatever box you give it.")
+                Text(draft.qrBoxes.count > 1
+                     ? "Every code on the sheet carries the same address — one per strip, so each half leaves with a working one. Drawn square inside whatever box you give it."
+                     : "Drag to place the guest code. It is drawn square inside whatever box you give it. A sheet that gets cut in two wants a second one.")
                     .font(.system(size: 11)).foregroundStyle(Palette.midGray)
                     .fixedSize(horizontal: false, vertical: true)
-                removeRow { draft.qr = nil }
+
+                if draft.qrBoxes.count > 1 {
+                    Button("Match the other side") { mirrorQRBox(i) }
+                        .buttonStyle(QuietButtonStyle())
+                }
+                Button("Duplicate") { addQRBox(copying: i) }
+                    .buttonStyle(QuietButtonStyle())
+                removeRow { draft.qrBoxes.remove(at: i) }
             }
         }
     }
@@ -868,7 +877,7 @@ struct PrintEditorView: View {
     private func rect(of id: String) -> NormRect? {
         if let s = draft.slots.first(where: { $0.id == id }) { return s.rect }
         if let o = draft.overlays.first(where: { $0.id == id }) { return o.rect }
-        if id == "qr" { return draft.qr }
+        if let q = draft.qrBoxes.first(where: { $0.id == id }) { return q.rect }
         return nil
     }
 
@@ -898,7 +907,7 @@ struct PrintEditorView: View {
         }
         for s in draft.slots where s.id != id { add(s.rect) }
         for o in draft.overlays where o.id != id { add(o.rect) }
-        if id != "qr", let q = draft.qr { add(q) }
+        for q in draft.qrBoxes where q.id != id { add(q.rect) }
         if let cut = draft.cutGuide,
            (cut.orientation == .vertical) == (axis == .horizontal) {
             out.append(cut.position)
@@ -984,7 +993,55 @@ struct PrintEditorView: View {
     private func setRect(_ r: NormRect, of id: String) {
         if let i = draft.slots.firstIndex(where: { $0.id == id }) { draft.slots[i].rect = r; return }
         if let i = draft.overlays.firstIndex(where: { $0.id == id }) { draft.overlays[i].rect = r; return }
-        if id == "qr" { draft.qr = r }
+        if let i = draft.qrBoxes.firstIndex(where: { $0.id == id }) { draft.qrBoxes[i].rect = r }
+    }
+
+    private func isQR(_ id: String) -> Bool { draft.qrBoxes.contains { $0.id == id } }
+
+    /// Adds a code. The second one lands on the far side of the cutting line
+    /// rather than on top of the first, because a sheet with two codes is
+    /// almost always a sheet that gets cut in half.
+    private func addQRBox(copying index: Int? = nil) {
+        var box = TemplateQR()
+        if let index, draft.qrBoxes.indices.contains(index) {
+            box.rect = draft.qrBoxes[index].rect
+            box.rect.x += 0.04
+            box.rect.y += 0.04
+        } else if let first = draft.qrBoxes.first {
+            // Its mirror image about the fold, so the pair sit the same
+            // distance in from each outside edge.
+            let split = draft.cutGuide.flatMap { $0.orientation == .vertical ? $0.position : nil } ?? 0.5
+            box.rect = first.rect
+            box.rect.x = mirroredX(of: first.rect, about: split)
+        }
+        box.rect.clamp()
+        draft.qrBoxes.append(box)
+        selection = box.id
+        dirty = true
+    }
+
+    /// Puts this code where the other one is, reflected about the fold.
+    private func mirrorQRBox(_ index: Int) {
+        guard draft.qrBoxes.indices.contains(index) else { return }
+        let other = draft.qrBoxes.enumerated().first { $0.offset != index }?.element
+        guard let other else { return }
+        let split = draft.cutGuide.flatMap { $0.orientation == .vertical ? $0.position : nil } ?? 0.5
+        var r = draft.qrBoxes[index].rect
+        r.w = other.rect.w
+        r.h = other.rect.h
+        r.y = other.rect.y
+        r.x = mirroredX(of: other.rect, about: split)
+        r.clamp()
+        draft.qrBoxes[index].rect = r
+        dirty = true
+    }
+
+    /// The x a box would have if it were reflected across the fold, keeping the
+    /// same distance from its own outside edge.
+    private func mirroredX(of rect: NormRect, about split: Double) -> Double {
+        let centre = rect.x + rect.w / 2
+        let mirroredCentre = 2 * split - centre
+        return min(max(mirroredCentre - rect.w / 2, 0), 1 - rect.w)
     }
 
     private func addSlot() {

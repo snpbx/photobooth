@@ -18,10 +18,13 @@ struct PrintTemplate: Codable, Identifiable, Hashable {
     var slots: [TemplateSlot] = []
     var overlays: [TemplateOverlay] = []
     var border = TemplateBorder()
-    /// Where the guest QR code goes, if the operator wants one on the sheet.
-    /// Optional because a template that carries no code is a perfectly good
-    /// template — the finish screen still shows one.
-    var qr: NormRect?
+    /// Where the guest codes go. Usually none or one — and two on a sheet that
+    /// is cut into strips, since each half leaves with somebody different and a
+    /// single code in the middle would be cut in two.
+    var qrBoxes: [TemplateQR] = []
+    /// The single box layouts used to carry. Read when an older file is opened
+    /// and folded into `qrBoxes`; never written again.
+    private var qr: NormRect?
     /// The dotted line the operator cuts along. Optional because most sheets are
     /// not cut at all — only the ones printed two strips to a page.
     var cutGuide: CutGuide?
@@ -65,6 +68,14 @@ struct CutGuide: Codable, Hashable {
     /// How far in from the ends the line stops, so it does not run into the
     /// trimmed edge of a borderless print.
     var inset: Double = 0.02
+}
+
+/// One guest code on the sheet. Carries an id of its own because the editor
+/// needs to tell two of them apart — select one, drag it, resize it, remove it —
+/// and a bare rectangle cannot be referred to.
+struct TemplateQR: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var rect = NormRect(x: 0.72, y: 0.84, w: 0.2, h: 0.13)
 }
 
 /// A rectangle as a fraction of the canvas: 0…1 on both axes, origin top-left.
@@ -145,7 +156,11 @@ extension PrintTemplate {
         slots         = try c.decodeIfPresent([TemplateSlot].self, forKey: .slots)  ?? slots
         overlays      = try c.decodeIfPresent([TemplateOverlay].self, forKey: .overlays) ?? overlays
         border        = try c.decodeIfPresent(TemplateBorder.self, forKey: .border) ?? border
-        qr            = try c.decodeIfPresent(NormRect.self, forKey: .qr)
+        qrBoxes       = try c.decodeIfPresent([TemplateQR].self, forKey: .qrBoxes)  ?? qrBoxes
+        // A layout saved when there could only be one code keeps it.
+        if qrBoxes.isEmpty, let single = try c.decodeIfPresent(NormRect.self, forKey: .qr) {
+            qrBoxes = [TemplateQR(rect: single)]
+        }
         cutGuide      = try c.decodeIfPresent(CutGuide.self, forKey: .cutGuide)
         updatedAt     = try c.decodeIfPresent(Date.self, forKey: .updatedAt)        ?? updatedAt
     }
