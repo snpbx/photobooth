@@ -115,6 +115,27 @@ final class DSLRCameraService: CameraBackendService, @unchecked Sendable {
         if raw.contains("Could not lock") || raw.contains("PTP") {
             return "Camera did not respond. Switch it off and on, then reconnect."
         }
+        // The one a 6D gives for everything it will not do. Naming the usual
+        // causes is the difference between a fixable evening and a dead booth:
+        // the body reports the same code whether the dial is wrong, the lens is
+        // hunting, or the card is out.
+        if raw.localizedCaseInsensitiveContains("unspecified error") {
+            var why = "The camera refused the shutter."
+            if let range = raw.range(of: "mode dial: ") {
+                let mode = String(raw[range.upperBound...]).replacingOccurrences(of: ")", with: "")
+                let automatic = ["auto", "scene", "creative", "portrait", "landscape",
+                                 "closeup", "sports", "night", "movie", "a-dep", "unknown"]
+                if automatic.contains(where: { mode.localizedCaseInsensitiveContains($0) }) {
+                    why += " The mode dial is on \(mode) — fully automatic modes block remote capture. Turn it to M or Av."
+                    return why
+                }
+                why += " Dial is on \(mode)."
+            }
+            return why + " Check the lens can find focus (or switch it to MF), that a card is in, and that the battery is not flat."
+        }
+        if raw.contains("Could not find the requested device") {
+            return "The camera dropped off USB. Check the cable, then reconnect."
+        }
         return raw
     }
 

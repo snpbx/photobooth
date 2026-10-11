@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static Camera     *g_cam = NULL;
 static GPContext  *g_ctx = NULL;
@@ -168,13 +169,118 @@ int gpshim_liveview_frame(unsigned char **out, unsigned long *len) {
     return 0;
 }
 
+// MARK: - Taking a photograph
+//
+// A Canon EOS refuses the shutter in more ways than one, and the driver reports
+// most of them as the same thing: "Unspecified error". Three defences, in the
+// order they matter.
+
+/// Flips a camera setting that may or may not exist on this body. Returns 0
+/// when it was there and took the value.
+static int set_flag(const char *name, int value) {
+    CameraWidget *w = NULL;
+    if (gp_camera_get_single_config(g_cam, name, &w, g_ctx) != GP_OK || !w) return -1;
+    CameraWidgetType type;
+    gp_widget_get_type(w, &type);
+    int r;
+    if (type == GP_WIDGET_TOGGLE) {
+        r = gp_widget_set_value(w, &value);
+    } else {
+        const char *text = value ? "1" : "0";
+        r = gp_widget_set_value(w, text);
+    }
+    if (r == GP_OK) r = gp_camera_set_single_config(g_cam, name, w, g_ctx);
+    gp_widget_free(w);
+    return r == GP_OK ? 0 : -1;
+}
+
+/// Reads a setting as text, for saying something useful when the shutter is
+/// refused — "the dial is on Auto" is the answer nine times in ten.
+static void read_flag(const char *name, char *out, size_t cap) {
+    if (cap) out[0] = '\0';
+    CameraWidget *w = NULL;
+    if (gp_camera_get_single_config(g_cam, name, &w, g_ctx) != GP_OK || !w) return;
+    const char *value = NULL;
+    CameraWidgetType type;
+    gp_widget_get_type(w, &type);
+    if ((type == GP_WIDGET_RADIO || type == GP_WIDGET_MENU || type == GP_WIDGET_TEXT)
+        && gp_widget_get_value(w, &value) == GP_OK && value) {
+        snprintf(out, cap, "%s", value);
+    }
+    gp_widget_free(w);
+}
+
+/// Clears events the camera has been sitting on. A session that failed halfway
+/// leaves them queued, and the next capture is answered with one of those.
+static void drain_events(int ms) {
+    CameraEventType type = GP_EVENT_UNKNOWN;
+    void *data = NULL;
+    int waited = 0;
+    while (waited < ms) {
+        if (gp_camera_wait_for_event(g_cam, 50, &type, &data, g_ctx) < GP_OK) break;
+        free(data); data = NULL;
+        waited += 50;
+        if (type == GP_EVENT_TIMEOUT) break;
+    }
+    free(data);
+}
+
+/// The other way to take a photograph: ask the body to fire, then wait for it
+/// to announce the file. Canon bodies that refuse `gp_camera_capture` outright
+/// will very often do this instead, because it does not wait on the same
+/// autofocus confirmation.
+static int trigger_and_wait(CameraFilePath *path, int timeout_ms) {
+    int r = gp_camera_trigger_capture(g_cam, g_ctx);
+    if (r < GP_OK) return r;
+
+    int waited = 0;
+    while (waited < timeout_ms) {
+        CameraEventType type = GP_EVENT_UNKNOWN;
+        void *data = NULL;
+        r = gp_camera_wait_for_event(g_cam, 400, &type, &data, g_ctx);
+        waited += 400;
+        if (r < GP_OK) { free(data); return r; }
+        if (type == GP_EVENT_FILE_ADDED && data) {
+            *path = *(CameraFilePath *)data;
+            free(data);
+            return GP_OK;
+        }
+        free(data);
+    }
+    return GP_ERROR_TIMEOUT;
+}
+
 int gpshim_capture(unsigned char **out, unsigned long *len) {
     *out = NULL; *len = 0;
     if (!g_cam) { snprintf(g_err, sizeof(g_err), "not connected"); return -1; }
 
+    // Live view down for the duration. An EOS with the mirror up for the
+    // preview will not release the shutter, which is most of what the booth
+    // was seeing: connect fine, preview fine, every capture refused.
+    int viewfinder_was_on = (set_flag("viewfinder", 0) == 0);
+    drain_events(150);
+
     CameraFilePath path;
     int r = gp_camera_capture(g_cam, GP_CAPTURE_IMAGE, &path, g_ctx);
-    if (r < GP_OK) { set_err("capture", r); return r; }
+    if (r < GP_OK) {
+        // Give the body a moment to finish whatever it was doing, then ask the
+        // other way round before giving up on the shot.
+        usleep(400 * 1000);
+        r = trigger_and_wait(&path, 8000);
+    }
+    if (viewfinder_was_on) set_flag("viewfinder", 1);
+
+    if (r < GP_OK) {
+        char mode[64];
+        read_flag("autoexposuremode", mode, sizeof(mode));
+        if (mode[0]) {
+            snprintf(g_err, sizeof(g_err), "capture: %s (mode dial: %s)",
+                     gp_result_as_string(r), mode);
+        } else {
+            set_err("capture", r);
+        }
+        return r;
+    }
 
     CameraFile *file;
     if (gp_file_new(&file) < GP_OK) { snprintf(g_err, sizeof(g_err), "file_new failed"); return -1; }

@@ -140,6 +140,23 @@ Apple one and binds to that model and port explicitly, rather than letting
 `gp_camera_init` open whatever answers first; if nothing on the bus qualifies it
 says so instead of connecting to something useless.
 
+**A refused shutter.** A Canon EOS reports almost everything it will not do as
+`Unspecified error`, and the booth was seeing it on every capture while connect
+and live view worked perfectly. Three defences, in the order they matter:
+
+* **Live view goes down for the duration of the shot.** An EOS holding the
+  mirror up for the preview will not release the shutter; the `viewfinder`
+  setting is switched off before the capture and back on after.
+* **A second way to fire.** If `gp_camera_capture` is still refused, the shim
+  falls back to `gp_camera_trigger_capture` and waits for the body to announce
+  the file — Canon bodies that reject the first often accept this, because it
+  does not wait on the same autofocus confirmation. Stale events are drained
+  first, since a session that failed halfway leaves them queued and the next
+  capture is answered with one of those.
+* **An error worth reading.** The failure now names the mode dial's position
+  when the body will report it, because "the dial is on Auto" is the answer nine
+  times in ten, and says what else to check — focus, card, battery.
+
 **Printer** — prints go through the macOS print system (CUPS) via `lp`, which
 gives a trackable job id and access to the CP1500's `Postcard.Fullbleed` media.
 No proprietary SELPHY protocol is implemented.
