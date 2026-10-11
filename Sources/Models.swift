@@ -495,6 +495,10 @@ struct AppSettings: Codable, Equatable {
     /// photographs. The operator keeps the album link — it is in the admin, and
     /// it is theirs to send to the client who booked the booth.
     var linkAlbumFromSessions: Bool = false
+    /// How long guests are told their photographs will stay up. The notice on
+    /// every page is built from this; 0 shows none. Nothing deletes anything on
+    /// its own — this is a promise the operator keeps, not a timer.
+    var photoRetentionDays: Int = 14
     var cloudinaryCloudName: String = ""     // from the Cloudinary dashboard
     var cloudinaryPreset: String = ""        // an UNSIGNED upload preset — never a secret
     var albumOutputPath: String = ""         // where album pages are written

@@ -58,8 +58,7 @@ enum PagesTemplate {
     /// The reference's faces (Neue Machina, System85, Pixel M Plus) are not
     /// free to embed, and every page is deliberately self-contained so that a
     /// guest on two bars of venue wifi still gets their photographs — so the
-    /// heaviest system faces stand in, and the Japanese eyebrows use whatever
-    /// the phone has.
+    /// heaviest system faces stand in.
     ///
     /// Sizes are fluid between a 320px phone and a desktop, and the gutters
     /// respect the notch and home indicator (`viewport-fit=cover` plus the
@@ -73,8 +72,7 @@ enum PagesTemplate {
             --gl:max(var(--g),env(safe-area-inset-left)); --gr:max(var(--g),env(safe-area-inset-right));
             --sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
             --display:"Arial Black",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,Arial,sans-serif;
-            --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
-            --jp:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",ui-monospace,monospace; }
+            --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace; }
     * { box-sizing:border-box; }
     html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     body { margin:0; min-height:100vh; background:var(--cream); color:var(--ink);
@@ -91,11 +89,12 @@ enum PagesTemplate {
            padding-top:env(safe-area-inset-top); }
     .mark { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
             font:700 15px/1 var(--sans); letter-spacing:.02em; text-transform:uppercase; }
-    .bar .jp { flex:none; font:400 12px/1 var(--jp); letter-spacing:.12em; opacity:.8; }
+    .bar img { display:block; height:22px; width:auto; }
 
     /* Hero wordmark */
     .hero { display:grid; gap:18px; padding-top:clamp(28px,7vw,80px); padding-bottom:clamp(28px,6vw,64px); }
-    .eyebrow { margin:0 0 8px; font:400 13px/1 var(--jp); letter-spacing:.14em; color:var(--stone); }
+    .eyebrow { margin:0 0 8px; font:700 12px/1 var(--sans); letter-spacing:.16em;
+               text-transform:uppercase; color:var(--stone); }
     h1 { margin:0; font:900 clamp(44px,13vw,150px)/.78 var(--display); letter-spacing:-.035em;
          text-transform:uppercase; overflow-wrap:anywhere; hyphens:auto; }
     h1.long { font-size:clamp(34px,9.5vw,112px); line-height:.85; }
@@ -172,6 +171,13 @@ enum PagesTemplate {
     .grid .label { color:var(--stone); white-space:nowrap; }
     @media (max-width:374px) { .grid .pill.sm { padding:0 11px; } .grid .label { font-size:12px; } }
 
+    /* The one thing on the page that has to be read rather than looked at. */
+    .alert { margin:0 0 clamp(18px,4vw,28px); padding:16px 18px; border:1px solid var(--ink);
+             border-radius:14px; background:var(--amber); font-size:15px; line-height:1.35; }
+    .alert b { display:block; font-size:16px; margin-bottom:2px; }
+    footer .alert { background:transparent; border-color:var(--cream); color:var(--cream);
+                    margin:0 0 16px; }
+
     .note { margin:clamp(24px,5vw,40px) 0 0; padding:18px 20px; border:1px solid var(--ink);
             border-radius:14px; font-size:15px; line-height:1.3; max-width:680px; }
     .empty { padding:48px 0; font:400 14px/1.3 var(--mono); color:var(--stone); }
@@ -180,7 +186,7 @@ enum PagesTemplate {
              padding-top:28px; padding-bottom:calc(28px + env(safe-area-inset-bottom)); font-size:14px; line-height:1.35; }
     footer p { margin:4px 0; }
     footer a { font-weight:700; overflow-wrap:anywhere; }
-    footer .jp { display:block; margin-bottom:12px; font:400 12px/1 var(--jp); letter-spacing:.14em; color:var(--stone); }
+    footer img { display:block; height:24px; width:auto; margin-bottom:14px; }
 
     /* Phones.
        The wordmark is the point of this design on a laptop and the problem with
@@ -192,7 +198,7 @@ enum PagesTemplate {
       :root { --g:14px; }
       .bar { min-height:46px; }
       .mark { font-size:13px; }
-      .bar .jp { font-size:11px; }
+      .bar img { height:18px; }
 
       .hero { padding-top:20px; padding-bottom:22px; gap:12px; }
       .eyebrow { font-size:11px; margin-bottom:6px; }
@@ -217,11 +223,13 @@ enum PagesTemplate {
       .grid figcaption { padding:8px; }
       .grid .label { font-size:11px; }
 
+      .alert { font-size:13.5px; padding:13px 15px; border-radius:12px; }
+      .alert b { font-size:14.5px; }
       .note { font-size:13px; padding:14px 16px; border-radius:12px; margin-top:22px; }
       .empty { padding:32px 0; font-size:13px; }
       footer { margin-top:30px; font-size:13px; padding-top:22px;
                padding-bottom:calc(22px + env(safe-area-inset-bottom)); }
-      footer .jp { font-size:11px; margin-bottom:8px; }
+      footer img { height:20px; margin-bottom:10px; }
     }
 
     /* The smallest handsets still in people's pockets — an SE held in one hand
@@ -235,7 +243,28 @@ enum PagesTemplate {
     }
     """
 
-    private static func head(_ title: String, siteTitle: String) -> String {
+    /// How long the photographs stay up, and the only thing on the page a guest
+    /// has to read rather than look at.
+    ///
+    /// Written out in full on every page. A line in a footer nobody reaches is
+    /// not a warning, and "download them now" is the whole message — the rest
+    /// of the page is already doing the pleasant part.
+    static func retentionNotice(days: Int) -> String {
+        guard days > 0 else { return "" }
+        let period: String
+        switch days {
+        case 1:              period = "24 hours"
+        case 7:              period = "one week"
+        case 14:             period = "two weeks"
+        case 21:             period = "three weeks"
+        case 28, 29, 30, 31: period = "a month"
+        default:             period = "\(days) days"
+        }
+        return "<div class=\"alert\"><b>Save your photographs now</b>"
+            + "These are deleted after \(period), so download them to your phone while you are here. Thank you!</div>"
+    }
+
+    private static func head(_ title: String, siteTitle: String, logo: String? = nil) -> String {
         """
         <!doctype html>
         <html lang="en">
@@ -249,17 +278,30 @@ enum PagesTemplate {
         <style>\(css)</style>
         </head>
         <body>
-        <nav class="bar pad"><span class="mark">\(esc(siteTitle))</span><span class="jp" lang="ja">フォトブース</span></nav>
+        <nav class="bar pad">\(mark(siteTitle: siteTitle, logo: logo))</nav>
         """
     }
 
-    private static func foot(brandLink: String?, brandLabel: String) -> String {
-        var f = "<footer class=\"pad\"><span class=\"jp\" lang=\"ja\">ありがとう</span>"
+    /// The operator's own mark across the top, their name when there is no
+    /// artwork. The logo is a file beside the pages rather than baked into each
+    /// one: seventy pages carrying the same picture is seventy copies of it.
+    private static func mark(siteTitle: String, logo: String?) -> String {
+        if let logo, !logo.isEmpty {
+            return "<img src=\"\(esc(logo))\" alt=\"\(esc(siteTitle))\">"
+        }
+        return "<span class=\"mark\">\(esc(siteTitle))</span>"
+    }
+
+    private static func foot(brandLink: String?, brandLabel: String,
+                             notice: String = "", logo: String? = nil) -> String {
+        // No second logo down here: the header carries the mark, and a page
+        // that signs itself twice looks like a template rather than a booth.
+        var f = "<footer class=\"pad\">" + notice
         if let link = brandLink, !link.isEmpty {
             let label = brandLabel.isEmpty ? "" : "\(esc(brandLabel)) — "
             f += "<p>\(label)<a href=\"\(esc(link))\">\(esc(link))</a></p>"
         }
-        f += "<p>Photographs stay up as long as this page does. Save the ones you want.</p>"
+        f += "<p>Save the ones you want — this page will not be here for ever.</p>"
         f += "</footer>"
         return f + "</body></html>"
     }
@@ -349,15 +391,16 @@ enum PagesTemplate {
 
     // MARK: - Pages
 
-    static func landing(siteTitle: String) -> String {
-        head(siteTitle, siteTitle: siteTitle) + """
+    static func landing(siteTitle: String, logo: String? = nil, retentionDays: Int = 0) -> String {
+        head(siteTitle, siteTitle: siteTitle, logo: logo) + """
         <header class="hero pad">
-          <div><p class="eyebrow" lang="ja">ようこそ</p>\(h1(siteTitle))</div>
+          <div>\(h1(siteTitle))</div>
           <p class="tag">Scan the code on the booth screen or on your print to open your photographs.</p>
         </header>
         <div class="pad"><p class="note">Each session has its own address, so this page has nothing to list.
         If you have lost the link, ask whoever ran the booth — they can find it again.</p></div>
-        """ + foot(brandLink: nil, brandLabel: "")
+        """ + foot(brandLink: nil, brandLabel: "",
+                   notice: retentionNotice(days: retentionDays), logo: logo)
     }
 
     static func readme(siteTitle: String) -> String {
@@ -402,24 +445,26 @@ enum PagesTemplate {
                             eventName: String,
                             startedAt: Date,
                             brandLink: String? = nil,
-                            brandLabel: String = "") -> String {
-        var html = head("Your photos — \(eventName)", siteTitle: siteTitle)
+                            brandLabel: String = "",
+                            logo: String? = nil,
+                            retentionDays: Int = 0) -> String {
+        var html = head("Your photos — \(eventName)", siteTitle: siteTitle, logo: logo)
         html = html.replacingOccurrences(
             of: "<meta name=\"theme-color\"",
             with: "<meta http-equiv=\"refresh\" content=\"10\">\n<meta name=\"theme-color\"")
         html += """
         <header class="hero pad">
-          <div><p class="eyebrow" lang="ja">もうすぐ</p><h1 class="long">Nearly<br>there</h1></div>
+          <div><h1 class="long">Nearly<br>there</h1></div>
           <p class="tag"><b>\(esc(eventName))</b>\(dateFormatter.string(from: startedAt)) · \(timeFormatter.string(from: startedAt))</p>
         </header>
         <nav class="bands">
           <span class="band pad"><span class="name">Your photographs are uploading</span>
           <span class="pill">Wait ↻</span></span>
         </nav>
-        <div class="pad"><p class="note">This page refreshes itself every few seconds. Keep it open — your
+        <div class="pad">\(retentionNotice(days: retentionDays))<p class="note">This page refreshes itself every few seconds. Keep it open — your
         photographs appear here as soon as the booth has sent them, usually within a minute of your last shot.</p></div>
         """
-        return html + foot(brandLink: brandLink, brandLabel: brandLabel)
+        return html + foot(brandLink: brandLink, brandLabel: brandLabel, logo: logo)
     }
 
     static func sessionPage(siteTitle: String,
@@ -431,7 +476,9 @@ enum PagesTemplate {
                             video videoRef: PhotoRef? = nil,
                             albumHref: String,
                             brandLink: String? = nil,
-                            brandLabel: String = "") -> String {
+                            brandLabel: String = "",
+                            logo: String? = nil,
+                            retentionDays: Int = 0) -> String {
         var all = photos
         if let p = printRef { all.append(p) }
         if let g = gifRef { all.append(g) }
@@ -442,10 +489,10 @@ enum PagesTemplate {
         let jsList = "[" + all.map { "'\($0.src)'" }.joined(separator: ",") + "]"
         let zipName = "photos-\(session.publicToken).zip"
 
-        var html = head("Your photos — \(event.name)", siteTitle: siteTitle)
+        var html = head("Your photos — \(event.name)", siteTitle: siteTitle, logo: logo)
         html += """
         <header class="hero pad">
-          <div><p class="eyebrow" lang="ja">あなたの写真</p><h1>Your<br>photos</h1></div>
+          <div><h1>Your<br>photos</h1></div>
           <p class="tag"><b>\(esc(event.name))</b>\(dateFormatter.string(from: session.startedAt)) · \(timeFormatter.string(from: session.startedAt))</p>
         </header>
         """
@@ -509,9 +556,12 @@ enum PagesTemplate {
         }
         html += "</nav>"
 
+        let notice = retentionNotice(days: retentionDays)
+        if !notice.isEmpty { html += "<div class=\"pad\">\(notice)</div>" }
+
         if !photos.isEmpty {
             html += """
-            <section class="sec pad"><p class="eyebrow" lang="ja">しゃしん</p><h2>The photos</h2><div class="grid">
+            <section class="sec pad"><h2>The photos</h2><div class="grid">
             """
             for (i, ref) in photos.enumerated() {
                 let n = String(format: "%02d", i + 1)
@@ -533,21 +583,26 @@ enum PagesTemplate {
         }
         html += "</p></div>"
         html += zipScript
-        return html + foot(brandLink: brandLink, brandLabel: brandLabel)
+        return html + foot(brandLink: brandLink, brandLabel: brandLabel, logo: logo)
     }
 
     static func albumPage(siteTitle: String,
                           event: EventRecord,
                           entries: [AlbumEntry],
                           brandLink: String? = nil,
-                          brandLabel: String = "") -> String {
-        var html = head("\(event.name) — album", siteTitle: siteTitle)
+                          brandLabel: String = "",
+                          logo: String? = nil,
+                          retentionDays: Int = 0) -> String {
+        var html = head("\(event.name) — album", siteTitle: siteTitle, logo: logo)
         html += """
         <header class="hero pad">
-          <div><p class="eyebrow" lang="ja">アルバム</p>\(h1(event.name))</div>
+          <div>\(h1(event.name))</div>
           <p class="tag"><b>\(entries.count) session\(entries.count == 1 ? "" : "s")</b>\(dateFormatter.string(from: event.date))</p>
         </header>
         """
+        let albumNotice = retentionNotice(days: retentionDays)
+        if !albumNotice.isEmpty { html += "<div class=\"pad\">\(albumNotice)</div>" }
+
         if entries.isEmpty {
             html += "<p class=\"empty pad\">Nothing published yet.</p>"
         } else {
@@ -564,6 +619,6 @@ enum PagesTemplate {
             }
             html += "</div></section>"
         }
-        return html + foot(brandLink: brandLink, brandLabel: brandLabel)
+        return html + foot(brandLink: brandLink, brandLabel: brandLabel, logo: logo)
     }
 }

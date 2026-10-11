@@ -41,6 +41,8 @@ final class LocalGalleryServer: @unchecked Sendable {
     private var _brandLink: String?
     private var _brandLabel = ""
     private var _linksAlbum = false
+    private var _logoFile: String?
+    private var _retentionDays = 0
 
     var port: UInt16 { lock.lock(); defer { lock.unlock() }; return _port }
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return listener != nil }
@@ -108,13 +110,15 @@ final class LocalGalleryServer: @unchecked Sendable {
     /// and once at launch, so a booth restarted mid-event still answers for
     /// every code already in somebody's pocket.
     func publish(sessions: [Session], siteTitle: String, brandLink: String?, brandLabel: String,
-                 linksAlbum: Bool = false) {
+                 linksAlbum: Bool = false, logoFile: String? = nil, retentionDays: Int = 0) {
         lock.lock()
         _sessions = Dictionary(uniqueKeysWithValues: sessions.map { ($0.token, $0) })
         _siteTitle = siteTitle
         _brandLink = brandLink
         _brandLabel = brandLabel
         _linksAlbum = linksAlbum
+        _logoFile = logoFile
+        _retentionDays = retentionDays
         lock.unlock()
     }
 
@@ -212,9 +216,25 @@ final class LocalGalleryServer: @unchecked Sendable {
         // booth that hands a stranger on the venue wifi everyone's photographs
         // is worse than one that hands them nothing.
         guard !parts.isEmpty else {
-            sendHTML(PagesTemplate.landing(siteTitle: siteTitle), headOnly: headOnly, on: conn)
+            lock.lock(); let logo = _logoFile == nil ? nil : "logo.png"; let days = _retentionDays; lock.unlock()
+            sendHTML(PagesTemplate.landing(siteTitle: siteTitle, logo: logo, retentionDays: days),
+                     headOnly: headOnly, on: conn)
             return
         }
+        // The mark the pages carry across their header, served from the
+        // booth's own branding folder rather than copied anywhere.
+        if parts.count == 1, parts[0] == "logo.png" {
+            lock.lock(); let file = _logoFile; lock.unlock()
+            guard let file, let url = BrandingAssets.url(for: file),
+                  let data = try? Data(contentsOf: url) else {
+                sendNotFound(on: conn)
+                return
+            }
+            send(status: "200 OK", body: headOnly ? Data() : data, type: "image/png",
+                 length: data.count, on: conn)
+            return
+        }
+
         guard parts[0] == "s", parts.count >= 2 else {
             sendNotFound(on: conn)
             return
@@ -290,6 +310,8 @@ final class LocalGalleryServer: @unchecked Sendable {
         let title = _siteTitle
         let link = _brandLink
         let label = _brandLabel
+        let logo = _logoFile == nil ? nil : "../../logo.png"
+        let days = _retentionDays
         lock.unlock()
 
         let photos = s.photoFiles.map { PagesTemplate.PhotoRef(src: $0) }
@@ -315,7 +337,9 @@ final class LocalGalleryServer: @unchecked Sendable {
                                          // this server has no album to serve.
                                          albumHref: "",
                                          brandLink: link,
-                                         brandLabel: label)
+                                         brandLabel: label,
+                                         logo: logo,
+                                         retentionDays: days)
     }
 
     // MARK: - Writing

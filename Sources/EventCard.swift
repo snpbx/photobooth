@@ -541,6 +541,21 @@ struct GallerySiteCard: View {
             }
             .font(.system(size: 12))
 
+            LabeledRow(label: "Tell guests they have",
+                       help: "Printed on every page as “save them now”. Nothing is deleted automatically — this is a promise you keep, not a timer. Set it to 0 to say nothing.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.photoRetentionDays },
+                    set: { c.settingsService.settings.photoRetentionDays = $0 })) {
+                        Text("No notice").tag(0)
+                        Text("24 hours").tag(1)
+                        Text("One week").tag(7)
+                        Text("Two weeks").tag(14)
+                        Text("Three weeks").tag(21)
+                        Text("A month").tag(30)
+                }
+                .labelsHidden().frame(width: 150)
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Toggle("Link the whole album from each session page", isOn: Binding(
                     get: { c.settingsService.settings.linkAlbumFromSessions },

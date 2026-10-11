@@ -584,9 +584,22 @@ In the admin, **Session links** appear for the current session and for every pas
 one in the Sessions tab: the session link with its code, Copy and Open, a button
 per photograph, and *Copy every photo link*.
 
+Every page carries the operator's **logo across the header** — written once to
+the site root and referenced from each page, because seventy pages carrying the
+same picture is seventy copies of it. Without one, the site's name is set in type
+instead. The local server answers for `/logo.png` the same way, so a page served
+off the booth at a venue with no internet is branded too.
+
+Every page also carries **one notice**, and it is the only thing on the page a
+guest has to read rather than look at: *Save your photographs now — these are
+deleted after two weeks.* On a session page it sits directly under the Save
+buttons, where somebody decides whether to download; elsewhere it is at the foot.
+The period comes from Gallery Site and nothing deletes anything on its own — it
+is a promise the operator keeps, not a timer.
+
 The pages are styled after **Glyphy** — "buttercream specimen sheet beneath
 sunset bands": a warm cream canvas, a black nav strip, an oversized wordmark with
-a small Japanese eyebrow, and colour only as full-bleed action bands stacked
+and colour only as full-bleed action bands stacked
 yellow → orange → red → burgundy → plum. Cards use 14px corners and pills 28px;
 nothing has a shadow. The reference's faces are not free to embed and the pages
 are deliberately self-contained for venue wifi, so the heaviest system faces

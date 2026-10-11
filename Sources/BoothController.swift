@@ -1432,6 +1432,8 @@ final class BoothController: ObservableObject {
         p.brandLink = customQRURL?.absoluteString
         p.brandLabel = settings.customQRCaption
         p.linksAlbum = settings.linkAlbumFromSessions
+        p.logoFile = settings.idleLogoFile.isEmpty ? nil : settings.idleLogoFile
+        p.retentionDays = max(0, settings.photoRetentionDays)
         return p
     }
 
@@ -1769,6 +1771,7 @@ final class BoothController: ObservableObject {
         let message = "\(event.name) — \(session.id)"
 
         try await Task.detached(priority: .utility) {
+            publisher.writeLogo()
             try publisher.writeSessionPage(session: session, event: event, token: token,
                                            eventToken: eventToken,
                                            photos: photos, print: printRef, gif: gifRef,
@@ -2377,7 +2380,9 @@ final class BoothController: ObservableObject {
         LocalGalleryServer.shared.publish(sessions: list,
                                           siteTitle: settings.eventTitle,
                                           brandLink: customQRURL?.absoluteString,
-                                          brandLabel: settings.customQRCaption)
+                                          brandLabel: settings.customQRCaption,
+                                          logoFile: settings.idleLogoFile.isEmpty ? nil : settings.idleLogoFile,
+                                          retentionDays: max(0, settings.photoRetentionDays))
     }
 
     /// This session's address on the venue's own network — nil when serving is

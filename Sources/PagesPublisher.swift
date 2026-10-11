@@ -51,6 +51,39 @@ struct PagesPublisher {
     /// Whether a session's page offers the whole event's album. Off means a
     /// guest sees their own session and nothing else.
     var linksAlbum: Bool = false
+    /// The operator's mark, copied to the site root and referenced from every
+    /// page — seventy pages carrying the same picture is seventy copies of it.
+    var logoFile: String?
+    /// What the notice on every page says. 0 shows none.
+    var retentionDays: Int = 0
+
+    /// Where a page one level deep reaches the logo, once it is written.
+    private var logoHref: String? { logoFile == nil ? nil : "../../logo.png" }
+
+    /// Keeps the site's own front page in step with the branding and the
+    /// notice. Rewritten on every publish rather than once at setup: a logo
+    /// chosen later, or a retention period changed, should reach it too. Git
+    /// ignores it when nothing in it has moved.
+    func writeLanding() {
+        let index = repo.appendingPathComponent("index.html")
+        let page = PagesTemplate.landing(siteTitle: siteTitle,
+                                         logo: logoFile == nil ? nil : "logo.png",
+                                         retentionDays: retentionDays)
+        guard let data = page.data(using: .utf8) else { return }
+        if let existing = try? Data(contentsOf: index), existing == data { return }
+        try? data.write(to: index, options: .atomic)
+    }
+
+    /// Copies the mark to the site root. Quietly does nothing when there is no
+    /// logo set, or when the file has not changed.
+    func writeLogo() {
+        writeLanding()
+        guard let file = logoFile, let source = BrandingAssets.url(for: file) else { return }
+        let dest = repo.appendingPathComponent("logo.png")
+        guard let fresh = try? Data(contentsOf: source) else { return }
+        if let existing = try? Data(contentsOf: dest), existing == fresh { return }
+        try? fresh.write(to: dest, options: .atomic)
+    }
 
     private static let gitPath = "/usr/bin/git"
 
@@ -259,11 +292,14 @@ struct PagesPublisher {
             return
         }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        writeLogo()
         let page = PagesTemplate.holdingPage(siteTitle: siteTitle,
                                              eventName: event.name,
                                              startedAt: rec.startedAt,
                                              brandLink: brandLink,
-                                             brandLabel: brandLabel)
+                                             brandLabel: brandLabel,
+                                             logo: logoHref,
+                                             retentionDays: retentionDays)
         try page.data(using: .utf8)!.write(to: index)
     }
 
@@ -291,7 +327,9 @@ struct PagesPublisher {
                                              albumHref: linksAlbum
                                                  ? "../../\(Self.eventPath(token: eventToken))/" : "",
                                              brandLink: brandLink,
-                                             brandLabel: brandLabel)
+                                             brandLabel: brandLabel,
+                                             logo: logoHref,
+                                             retentionDays: retentionDays)
         try page.data(using: .utf8)!.write(to: dir.appendingPathComponent("index.html"))
     }
 
@@ -303,8 +341,10 @@ struct PagesPublisher {
         guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
         let dir = repo.appendingPathComponent(Self.eventPath(token: eventToken), isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        writeLogo()
         let album = PagesTemplate.albumPage(siteTitle: siteTitle, event: event, entries: entries,
-                                            brandLink: brandLink, brandLabel: brandLabel)
+                                            brandLink: brandLink, brandLabel: brandLabel,
+                                            logo: logoHref, retentionDays: retentionDays)
         try album.data(using: .utf8)!.write(to: dir.appendingPathComponent("index.html"))
     }
 
