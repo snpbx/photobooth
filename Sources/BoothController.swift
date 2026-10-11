@@ -1046,6 +1046,13 @@ final class BoothController: ObservableObject {
     private func sendToPrinter(session: SessionRecord, allowRepeat: Bool) {
         guard let name = session.printFileName else { return }
         if currentSession?.id == session.id { pendingPrint = false }
+        // A rehearsal composes the sheet, saves it and uploads it, and stops
+        // one step short of the paper. The print counter is left alone too: a
+        // sheet that never came out is not a sheet.
+        if fakePrinting {
+            log.info("Dry run — would have printed \(session.id) (\(max(1, session.copies)) copy/copies)")
+            return
+        }
         var s = session
         let url = storage.directory(for: session).appendingPathComponent(name)
         do {
@@ -1879,6 +1886,12 @@ final class BoothController: ObservableObject {
     @Published private(set) var gifQRImage: NSImage?
     /// The film's own code — the thing most guests actually want to post.
     @Published private(set) var videoQRImage: NSImage?
+    /// A rehearsal in progress, or nil. Watched by the console's own card.
+    @Published private(set) var dryRun: DryRunProgress?
+    /// Suppresses the printer for the length of a rehearsal. Everything else —
+    /// the capture, the sheet, the loop, the film, the upload — is real.
+    private(set) var fakePrinting = false
+    private var dryRunTask: Task<Void, Never>?
     /// Where this Mac can be reached on the venue's network, and whether the
     /// server is up. Published so the console can show the operator the address
     /// they are about to ask fifty people to scan.
@@ -2071,6 +2084,122 @@ final class BoothController: ObservableObject {
     /// Deliberately literal: whatever cannot be built is simply not shown. A
     /// silent substitution would put a code on the screen that sends guests
     /// somewhere the operator never chose.
+    // MARK: - Rehearsal
+
+    /// Every arrangement the booth could print, in the order the rota uses them.
+    var dryRunLayouts: [DryRunLayout] {
+        PrintLayout.allCases.map { .builtIn($0) }
+            + templates.templates.map { .template(id: $0.id, name: $0.name) }
+    }
+
+    var isDryRunning: Bool { dryRunTask != nil }
+
+    /// Photographs `plan.customers` imaginary groups, one after another.
+    ///
+    /// Deliberately the booth's own session machinery rather than a copy of it:
+    /// a rehearsal that exercised a parallel code path would prove nothing about
+    /// the one an event uses. The only things changed for the duration are the
+    /// printer (suppressed), the event (its own, so a client's album is not
+    /// filled with test shots) and the finish screen's wait for a press.
+    func startDryRun(_ plan: DryRunPlan) {
+        guard !isDryRunning else { return }
+        guard !state.isSessionActive else {
+            show(.warning, "Finish the session that is running first.")
+            return
+        }
+        guard cameraState.isReady else {
+            show(.error, "The camera is not ready — \(cameraState.label)")
+            return
+        }
+        let rota = dryRunLayouts
+        guard !rota.isEmpty else { return }
+
+        // Its own event, created once and reused, so a rehearsal never lands in
+        // a client's folder or their album.
+        let name = "Dry run"
+        let event = storage.events.first { $0.name == name }
+            ?? createEvent(name: name, client: "", venue: "", date: Date(),
+                           notes: "Rehearsals. Safe to delete.")
+        guard let event else { return }
+
+        let previousEvent = settings.activeEventID
+        let previousHold = settings.holdFinishUntilPress
+        let previousLayout = settings.layout
+        let previousTemplate = settings.activeTemplateID
+        let previousUploads = settings.uploadEnabled
+
+        setActiveEvent(event.id)
+        settingsService.settings.holdFinishUntilPress = false
+        if !plan.uploads { settingsService.settings.uploadEnabled = false }
+        fakePrinting = true
+        dryRun = DryRunProgress(customer: 1, total: plan.customers,
+                                layout: rota[0].name, note: "Starting")
+        log.info("Dry run started — \(plan.customers) customer(s), printing suppressed")
+
+        dryRunTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.fakePrinting = false
+                self.settingsService.settings.holdFinishUntilPress = previousHold
+                self.settingsService.settings.uploadEnabled = previousUploads
+                self.settingsService.settings.layout = previousLayout
+                self.settingsService.settings.activeTemplateID = previousTemplate
+                self.setActiveEvent(previousEvent)
+                self.dryRunTask = nil
+                self.log.info("Dry run finished")
+            }
+
+            for customer in 1...max(1, plan.customers) {
+                if Task.isCancelled { self.dryRun = nil; return }
+                let choice = plan.cycleLayouts
+                    ? rota[(customer - 1) % rota.count]
+                    : (previousTemplate.isEmpty ? DryRunLayout.builtIn(previousLayout)
+                                                : rota.first { $0.id == "tpl-\(previousTemplate)" } ?? rota[0])
+                switch choice {
+                case .builtIn(let l):        self.useBuiltInLayout(l)
+                case .template(let id, _):   self.useTemplate(id)
+                }
+                self.dryRun = DryRunProgress(customer: customer, total: plan.customers,
+                                             layout: choice.name, note: "Photographing")
+
+                self.startSession()
+                guard self.state.isSessionActive || self.sessionTask != nil else {
+                    self.dryRun?.failure = "The booth would not start a session."
+                    return
+                }
+                await self.sessionTask?.value
+
+                if case .failed(let why) = self.state {
+                    self.dryRun?.failure = why
+                    self.log.warn("Dry run stopped at customer \(customer): \(why)")
+                    return
+                }
+                if Task.isCancelled { self.dryRun = nil; return }
+
+                self.dryRun = DryRunProgress(customer: customer, total: plan.customers,
+                                             layout: choice.name, note: "Published")
+                // Long enough to see the finish screen land, short enough that a
+                // rehearsal of ten does not become a coffee break.
+                try? await Task.sleep(nanoseconds: UInt64(max(0.5, plan.gap) * 1_000_000_000))
+                self.returnToIdle()
+            }
+            self.dryRun = DryRunProgress(customer: plan.customers + 1, total: plan.customers,
+                                         layout: "", note: "Done")
+        }
+    }
+
+    func stopDryRun() {
+        dryRunTask?.cancel()
+        dryRunTask = nil
+        fakePrinting = false
+        cancelSession()
+        dryRun = nil
+        log.info("Dry run stopped by the operator")
+    }
+
+    /// Clears a finished rehearsal's summary off the card.
+    func clearDryRun() { if dryRunTask == nil { dryRun = nil } }
+
     // MARK: - The session's film
 
     /// One live-view frame into the clip.

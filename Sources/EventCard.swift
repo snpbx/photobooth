@@ -244,6 +244,98 @@ struct EventForm: View {
     }
 }
 
+// MARK: - Rehearsal
+
+/// Runs a whole evening against the real camera and the real site, with the
+/// printer switched off.
+struct DryRunCard: View {
+    @ObservedObject var c: BoothController
+    @State private var customers = 3
+    @State private var cycle = true
+    @State private var uploads = true
+
+    var body: some View {
+        let running = c.isDryRunning
+        SectionCard(title: "Dry Run",
+                    accessory: AnyView(
+                        HStack(spacing: 6) {
+                            StatusDot(tint: running ? Palette.statusWarn : Palette.textDim,
+                                      pulsing: running)
+                            Text((running ? "Running" : "Idle").uppercased())
+                                .font(VHS.mono(10, .semibold))
+                                .tracking(0.8)
+                                .foregroundStyle(running ? Palette.statusWarn : Palette.textDim)
+                        })) {
+
+            Text("Photographs imaginary guests with the camera that is connected, composes every layout, builds the loop and the film, and publishes for real — but prints nothing. Everything lands in its own “Dry run” event, so no client's folder or album is touched.")
+                .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LabeledRow(label: "Customers",
+                       help: "How many groups to photograph, one after another.") {
+                IntStepper(value: $customers, range: 1...20)
+            }
+
+            LabeledRow(label: "Every layout in turn",
+                       help: "Each guest gets the next arrangement — \(c.dryRunLayouts.count) to work through, the three built-ins and your own. Off uses whichever layout is selected now.") {
+                Toggle("", isOn: $cycle).labelsHidden()
+            }
+
+            LabeledRow(label: "Upload for real",
+                       help: "Publishes each session to the gallery exactly as an event would, so the queue, the pages and the codes are all exercised. Switch it off to rehearse somewhere with no signal.") {
+                Toggle("", isOn: $uploads).labelsHidden()
+            }
+
+            if c.settings.cameraBackend != .dslr {
+                Label("The camera is set to \(c.settings.cameraBackend.title), so this will not test the USB link.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.statusWarn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let p = c.dryRun {
+                Divider().opacity(0.4)
+                if let failure = p.failure {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Stopped at customer \(p.customer) of \(p.total)")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(failure)
+                            .font(.system(size: 11)).foregroundStyle(Palette.statusBad)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else if p.isFinished {
+                    Text("Finished — \(p.total) customer\(p.total == 1 ? "" : "s"), nothing printed.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Palette.statusOK)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Customer \(p.customer) of \(p.total) · \(p.layout)")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(p.note)
+                            .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                        ProgressView(value: Double(p.customer - 1), total: Double(max(1, p.total)))
+                            .progressViewStyle(.linear)
+                    }
+                }
+            }
+
+            if running {
+                Button("Stop") { c.stopDryRun() }
+                    .buttonStyle(QuietButtonStyle(destructive: true))
+            } else {
+                Button("Start Dry Run") {
+                    c.clearDryRun()
+                    c.startDryRun(DryRunPlan(customers: customers, cycleLayouts: cycle,
+                                             uploads: uploads))
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!c.cameraState.isReady || c.state.isSessionActive)
+            }
+        }
+    }
+}
+
 // MARK: - Serving from this Mac
 
 /// Handing photographs out over the venue's own wifi, with no internet at all.

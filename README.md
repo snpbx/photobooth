@@ -49,6 +49,9 @@ that snap.
 **A printed cutting line** — a faint dotted line down the middle of a sheet that
 holds two strips, so they can be cut apart cleanly.
 
+**Dry run** — rehearse a whole evening from the console: real camera, real
+uploads, every layout in turn, and no paper.
+
 **One guest, one session** — a session page no longer opens onto the whole
 event's album unless the operator asks for it.
 
@@ -575,6 +578,29 @@ stand in.
 They are built for phones first: fluid type from a 320px iPhone SE up to a
 desktop, gutters that clear the notch and home indicator, 44px-plus tap targets,
 a smaller headline in landscape, and no sideways scrolling at any width.
+
+## The dry run
+
+A rehearsal of a whole evening, from the Control tab. It photographs imaginary
+guests with whatever camera is connected, cycles through every layout — the
+three built-ins and the operator's own — composes each sheet, builds the loop
+and the film, publishes for real, and **prints nothing**.
+
+It runs the booth's own session machinery rather than a copy of it. A rehearsal
+that exercised a parallel code path would prove nothing about the one an event
+uses: the point is to find what only breaks on the night — the USB link under
+repeated capture, a layout that will not compose, the upload queue, the pages,
+the codes.
+
+Three things are changed for the duration and put back afterwards: the printer
+is suppressed (`fakePrinting`, which also leaves the print counter alone, since
+a sheet that never came out is not a sheet), the finish screen stops waiting for
+a press, and everything lands in its **own "Dry run" event** so no client's
+folder or album is filled with test shots. The event is created once, reused,
+and safe to delete.
+
+Uploads are real by default — that is most of what is being tested — and can be
+switched off to rehearse somewhere with no signal.
 
 ## Session state machine
 
