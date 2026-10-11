@@ -2208,8 +2208,13 @@ final class BoothController: ObservableObject {
         }
         refreshLocalAddress()
         publishLocalSessions()
-        wifiQRImage = WiFiQR.payload(ssid: s.localWiFiSSID, password: s.localWiFiPassword)
-            .flatMap { QRCode.image(for: $0, minimumSide: 360) }
+        // Nothing is put on the guest screen when the operator has asked for no
+        // codes there — a booth whose whole point is the printed code should not
+        // sprout a wifi card.
+        wifiQRImage = s.showQRCode
+            ? WiFiQR.payload(ssid: s.localWiFiSSID, password: s.localWiFiPassword)
+                .flatMap { QRCode.image(for: $0, minimumSide: 360) }
+            : nil
     }
 
     /// Re-reads this Mac's address. DHCP hands out a different one at every

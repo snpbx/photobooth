@@ -256,6 +256,34 @@ enum LayoutRenderer {
         }
     }
 
+    /// Where a code goes on a sheet whose layout never placed one.
+    ///
+    /// Under the photographs, in whatever space is left — and **one per strip**
+    /// when the sheet carries a cutting line down the middle, because two
+    /// halves cut apart need a code each; a single code in the middle would be
+    /// sliced in two and neither guest would have one.
+    ///
+    /// When there is no room below, it sits in the bottom corner over whatever
+    /// is there. A code printed over the edge of a photograph is a code; no code
+    /// is a guest with nothing to scan.
+    static func autoQRBoxes(for t: PrintTemplate) -> [NormRect] {
+        let bottom = t.slots.map { $0.rect.y + $0.rect.h }.max() ?? 0.8
+        let free = 1 - bottom
+        let split = t.cutGuide.flatMap { $0.orientation == .vertical ? $0.position : nil }
+
+        // Comfortable in the band, but never so large it dominates the sheet.
+        let side = min(max(free * 0.62, 0.10), 0.16)
+        let y = free >= 0.12 ? bottom + (free - side) / 2 : 1 - side - 0.02
+
+        func box(centre x: Double) -> NormRect {
+            var r = NormRect(x: x - side / 2, y: y, w: side, h: side)
+            r.clamp()
+            return r
+        }
+        guard let split else { return [box(centre: 0.5)] }
+        return [box(centre: split / 2), box(centre: split + (1 - split) / 2)]
+    }
+
     /// The operator's own sheet with its photograph slots collapsed into one.
     /// Everything else — background, border, every overlay and where it sits —
     /// is carried across untouched, which is the whole point: the loop has to
@@ -356,17 +384,26 @@ enum LayoutRenderer {
                 drawCutGuide(ctx, cut, canvas: canvas)
             }
 
-            if let payload = qrPayload, !payload.isEmpty, let box = template.qr {
-                let r = flip(box.rect(in: canvas), canvasH: canvas.height)
-                let side = min(r.width, r.height)
-                let square = CGRect(x: r.midX - side / 2, y: r.midY - side / 2, width: side, height: side)
-                if let qr = QRCode.cgImage(for: payload, minimumSide: side * 2) {
-                    ctx.saveGState()
-                    ctx.interpolationQuality = .none   // never smooth a QR code
-                    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
-                    ctx.fill(square.insetBy(dx: -side * 0.04, dy: -side * 0.04))
-                    ctx.draw(qr, in: square)
-                    ctx.restoreGState()
+            if let payload = qrPayload, !payload.isEmpty {
+                // The operator's own box when they placed one; otherwise the
+                // free space under the photographs, a code per strip where the
+                // sheet is going to be cut. A layout with no box used to print
+                // no code at all, which is a guest holding a strip with no way
+                // to reach anything.
+                let boxes = template.qr.map { [$0] } ?? autoQRBoxes(for: template)
+                for box in boxes {
+                    let r = flip(box.rect(in: canvas), canvasH: canvas.height)
+                    let side = min(r.width, r.height)
+                    let square = CGRect(x: r.midX - side / 2, y: r.midY - side / 2,
+                                        width: side, height: side)
+                    if let qr = QRCode.cgImage(for: payload, minimumSide: side * 2) {
+                        ctx.saveGState()
+                        ctx.interpolationQuality = .none   // never smooth a QR code
+                        ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+                        ctx.fill(square.insetBy(dx: -side * 0.04, dy: -side * 0.04))
+                        ctx.draw(qr, in: square)
+                        ctx.restoreGState()
+                    }
                 }
             }
         }
