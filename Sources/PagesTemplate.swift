@@ -448,7 +448,13 @@ enum PagesTemplate {
         if let v = videoRef {
             html += band(href: v.save, name: "Save the video", pill: "Save ↓", download: true)
         }
-        html += band(href: albumHref, name: "The whole album", pill: "Open →")
+        // Only when the operator has chosen to link it. A session page that
+        // opens onto the whole event hands every guest everybody else's
+        // photographs, which at a wedding is a mild surprise and at a corporate
+        // night is a complaint.
+        if !albumHref.isEmpty {
+            html += band(href: albumHref, name: "The whole album", pill: "Open →")
+        }
         html += "</nav>"
 
         if !photos.isEmpty {

@@ -1424,6 +1424,7 @@ final class BoothController: ObservableObject {
         p.siteTitle = settings.eventTitle
         p.brandLink = customQRURL?.absoluteString
         p.brandLabel = settings.customQRCaption
+        p.linksAlbum = settings.linkAlbumFromSessions
         return p
     }
 

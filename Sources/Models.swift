@@ -488,6 +488,13 @@ struct AppSettings: Codable, Equatable {
     /// it came from.
     var videoEndCard: Bool = true
     var uploadVideos: Bool = true
+    /// Whether a session's page offers the whole event's album.
+    ///
+    /// Off by default, and deliberately: the album lists every session of the
+    /// night, so linking it from one guest's page hands them everybody else's
+    /// photographs. The operator keeps the album link — it is in the admin, and
+    /// it is theirs to send to the client who booked the booth.
+    var linkAlbumFromSessions: Bool = false
     var cloudinaryCloudName: String = ""     // from the Cloudinary dashboard
     var cloudinaryPreset: String = ""        // an UNSIGNED upload preset — never a secret
     var albumOutputPath: String = ""         // where album pages are written

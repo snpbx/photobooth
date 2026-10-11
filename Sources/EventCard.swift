@@ -449,6 +449,19 @@ struct GallerySiteCard: View {
             }
             .font(.system(size: 12))
 
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Link the whole album from each session page", isOn: Binding(
+                    get: { c.settingsService.settings.linkAlbumFromSessions },
+                    set: { c.settingsService.settings.linkAlbumFromSessions = $0 }))
+                    .font(.system(size: 12))
+                Text(c.settings.linkAlbumFromSessions
+                     ? "Every guest's page opens onto the album, so anyone who scans a strip can see every other group's photographs from this event."
+                     : "Each guest sees their own session and nothing else. The album link stays here in the admin, to send to whoever booked the booth.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(c.settings.linkAlbumFromSessions ? Palette.statusWarn : Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Divider().opacity(0.4)
 
             HStack {

@@ -49,6 +49,9 @@ that snap.
 **A printed cutting line** — a faint dotted line down the middle of a sheet that
 holds two strips, so they can be cut apart cleanly.
 
+**One guest, one session** — a session page no longer opens onto the whole
+event's album unless the operator asks for it.
+
 **Photographs with no internet** — the booth serves them off its own disk over
 the venue's wifi, with a *join wifi* code on the finish screen; the printed code
 still points at the permanent online page.
@@ -504,6 +507,26 @@ kept it waiting through their exponential backoff. Now:
   out of the queue instead of failing for ever in front of everything else;
 * one failure moves on to the next session; only two in a row stop the pass,
   which is what a dead network actually looks like.
+
+## Who can see whose photographs
+
+A session page used to end with **The whole album** — a band opening onto every
+session of the night. Convenient for the client who booked the booth, and a
+surprise for a guest at a corporate party who scans their strip and finds
+everybody else's photographs.
+
+**Gallery Site → "Link the whole album from each session page"** decides it, and
+it is **off by default**: a guest sees their session and nothing else. The album
+link does not disappear — it stays in the admin, which is where the operator
+needs it, to send to whoever hired the booth. Turning it on says so plainly,
+because the consequence is not obvious from the switch.
+
+The local server never links the album whatever the setting says: it serves one
+session at a time and has no album to serve.
+
+None of this is privacy in the strong sense. Addresses are unguessable, which is
+not the same as private, and anything published to a free GitHub Pages site is
+world-readable to anyone holding the address.
 
 ## Session pages and per-photo codes
 

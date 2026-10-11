@@ -48,6 +48,9 @@ struct PagesPublisher {
     /// puts on its QR card, so the page carries it home too.
     var brandLink: String?
     var brandLabel: String = ""
+    /// Whether a session's page offers the whole event's album. Off means a
+    /// guest sees their own session and nothing else.
+    var linksAlbum: Bool = false
 
     private static let gitPath = "/usr/bin/git"
 
@@ -285,7 +288,8 @@ struct PagesPublisher {
                                              print: printRef,
                                              gif: gifRef,
                                              video: videoRef,
-                                             albumHref: "../../\(Self.eventPath(token: eventToken))/",
+                                             albumHref: linksAlbum
+                                                 ? "../../\(Self.eventPath(token: eventToken))/" : "",
                                              brandLink: brandLink,
                                              brandLabel: brandLabel)
         try page.data(using: .utf8)!.write(to: dir.appendingPathComponent("index.html"))

@@ -40,6 +40,7 @@ final class LocalGalleryServer: @unchecked Sendable {
     private var _siteTitle = "Photobooth"
     private var _brandLink: String?
     private var _brandLabel = ""
+    private var _linksAlbum = false
 
     var port: UInt16 { lock.lock(); defer { lock.unlock() }; return _port }
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return listener != nil }
@@ -106,12 +107,14 @@ final class LocalGalleryServer: @unchecked Sendable {
     /// Replaces what the server knows about. Called whenever a session finishes
     /// and once at launch, so a booth restarted mid-event still answers for
     /// every code already in somebody's pocket.
-    func publish(sessions: [Session], siteTitle: String, brandLink: String?, brandLabel: String) {
+    func publish(sessions: [Session], siteTitle: String, brandLink: String?, brandLabel: String,
+                 linksAlbum: Bool = false) {
         lock.lock()
         _sessions = Dictionary(uniqueKeysWithValues: sessions.map { ($0.token, $0) })
         _siteTitle = siteTitle
         _brandLink = brandLink
         _brandLabel = brandLabel
+        _linksAlbum = linksAlbum
         lock.unlock()
     }
 
@@ -306,10 +309,10 @@ final class LocalGalleryServer: @unchecked Sendable {
                                          print: printRef,
                                          gif: gifRef,
                                          video: videoRef,
-                                         // No album over the local link: the
-                                         // rest of the night belongs to other
-                                         // people, and this address has no way
-                                         // of asking who is scanning.
+                                         // Never over the local link, whatever
+                                         // the setting says: the rest of the
+                                         // night belongs to other people, and
+                                         // this server has no album to serve.
                                          albumHref: "",
                                          brandLink: link,
                                          brandLabel: label)
