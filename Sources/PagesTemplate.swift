@@ -120,8 +120,8 @@ enum PagesTemplate {
     .card .top { display:flex; justify-content:space-between; align-items:center; gap:10px;
                  margin-bottom:clamp(12px,3vw,20px); }
     .label { font:400 13px/1 var(--mono); letter-spacing:.02em; }
-    .card img { display:block; width:100%; height:auto; max-height:78vh; object-fit:contain;
-                background:#1a1a1a; }
+    .card img, .card video { display:block; width:100%; height:auto; max-height:78vh; object-fit:contain;
+                             background:#1a1a1a; border-radius:0; }
 
     /* Pills — ghost, outlined in whatever colour the text is */
     .pill { flex:none; display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -376,12 +376,17 @@ enum PagesTemplate {
                             photos: [PhotoRef],
                             print printRef: PhotoRef?,
                             gif gifRef: PhotoRef? = nil,
+                            video videoRef: PhotoRef? = nil,
                             albumHref: String,
                             brandLink: String? = nil,
                             brandLabel: String = "") -> String {
         var all = photos
         if let p = printRef { all.append(p) }
         if let g = gifRef { all.append(g) }
+        // The film is left out of "download all": it is the heaviest thing here
+        // by an order of magnitude, and a zip built in a phone browser over
+        // venue wifi is not where anybody wants it.
+
         let jsList = "[" + all.map { "'\($0.src)'" }.joined(separator: ",") + "]"
         let zipName = "photos-\(session.publicToken).zip"
 
@@ -392,6 +397,18 @@ enum PagesTemplate {
           <p class="tag"><b>\(esc(event.name))</b>\(dateFormatter.string(from: session.startedAt)) · \(timeFormatter.string(from: session.startedAt))</p>
         </header>
         """
+
+        // The film first: it is the thing a guest came back to the page for,
+        // and `playsinline` is what stops an iPhone taking it full-screen the
+        // moment it is touched.
+        if let v = videoRef {
+            html += """
+            <section class="media pad"><figure class="card">\
+            <div class="top"><span class="label">Your video</span>\
+            <a class="pill sm" href="\(esc(v.save))" download>Save ↓</a></div>\
+            <video controls playsinline preload="metadata" src="\(esc(v.src))"></video></figure></section>
+            """
+        }
 
         if printRef != nil || gifRef != nil {
             let pair = printRef != nil && gifRef != nil
@@ -427,6 +444,9 @@ enum PagesTemplate {
         }
         if let g = gifRef {
             html += band(href: g.save, name: "Save the GIF", pill: "Save ↓", download: true)
+        }
+        if let v = videoRef {
+            html += band(href: v.save, name: "Save the video", pill: "Save ↓", download: true)
         }
         html += band(href: albumHref, name: "The whole album", pill: "Open →")
         html += "</nav>"

@@ -517,6 +517,61 @@ private struct CameraAdvancedCard: View {
         }
         }
 
+        SectionCard(title: "Session Video") {
+            LabeledRow(label: "Record the session",
+                       help: "A short film of the whole visit — the live view as it ran, the shutter, and each photograph held as it was taken, with the booth's logo on the end. Saved beside the photographs and put on the session page for guests to post.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.makeVideo },
+                    set: { c.settingsService.settings.makeVideo = $0 }))
+                    .labelsHidden()
+            }
+
+            LabeledRow(label: "Hold each photo",
+                       help: "How long each photograph stays on screen in the film as it is taken.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.videoHoldSeconds },
+                    set: { c.settingsService.settings.videoHoldSeconds = $0 })) {
+                        Text("0.8 s").tag(0.8)
+                        Text("1.2 s — recommended").tag(1.2)
+                        Text("2 s").tag(2.0)
+                        Text("3 s — slow").tag(3.0)
+                }
+                .labelsHidden().frame(width: 200)
+                .disabled(!c.settings.makeVideo)
+            }
+
+            LabeledRow(label: "Size",
+                       help: "Long edge of the film. The live view is the source, so beyond 720 px there is rarely more to see — only more to download.") {
+                Picker("", selection: Binding(
+                    get: { c.settingsService.settings.videoLongEdge },
+                    set: { c.settingsService.settings.videoLongEdge = $0 })) {
+                        Text("540 px — smallest").tag(540)
+                        Text("720 px — recommended").tag(720)
+                        Text("1080 px — largest").tag(1080)
+                }
+                .labelsHidden().frame(width: 200)
+                .disabled(!c.settings.makeVideo)
+            }
+
+            LabeledRow(label: "Logo at the end",
+                       help: "Ends the film on the booth's own mark, so a clip posted by a guest says whose booth it was.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.videoEndCard },
+                    set: { c.settingsService.settings.videoEndCard = $0 }))
+                    .labelsHidden()
+                    .disabled(!c.settings.makeVideo)
+            }
+
+            LabeledRow(label: "Put it on the site",
+                       help: "Uploads the film with the photographs, so it is on the session page the guest's code opens.") {
+                Toggle("", isOn: Binding(
+                    get: { c.settingsService.settings.uploadVideos },
+                    set: { c.settingsService.settings.uploadVideos = $0 }))
+                    .labelsHidden()
+                    .disabled(!c.settings.makeVideo)
+            }
+        }
+
         SectionCard(title: "Camera Advanced") {
             LabeledRow(label: "Live view frame rate",
                        help: "Lower this if the USB link struggles or the 6D warms up during long events.") {

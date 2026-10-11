@@ -31,6 +31,9 @@ struct CloudinaryService {
     enum ResourceType: String {
         case image
         case raw
+        /// Cloudinary keeps video on its own endpoint and its own delivery path;
+        /// an MP4 posted to the image endpoint is refused outright.
+        case video
     }
 
     let config: Config
@@ -121,6 +124,23 @@ struct CloudinaryService {
                            saveAs: GIFRenderer.fileName)
     }
 
+    /// The session's film. Video carries its extension in the delivery address
+    /// the same way an image does.
+    func videoURL(token: String) -> URL? {
+        guard let base = url(for: .video,
+                             publicID: Self.photoPublicID(token: token, fileName: SessionVideoRecorder.fileName))
+        else { return nil }
+        return URL(string: base.absoluteString + ".mp4")
+    }
+
+    func videoSaveURL(token: String) -> URL? {
+        let stem = (SessionVideoRecorder.fileName as NSString).deletingPathExtension
+        let cloud = config.cloudName.trimmingCharacters(in: .whitespaces)
+        guard !cloud.isEmpty else { return nil }
+        return URL(string: "\(Self.deliveryBase)/\(cloud)/video/upload/fl_attachment:\(stem)/"
+                   + "\(Self.photoPublicID(token: token, fileName: SessionVideoRecorder.fileName)).mp4")
+    }
+
     func pageURL(token: String) -> URL? { url(for: .raw, publicID: Self.pagePublicID(token: token)) }
     func albumURL(token: String) -> URL? { url(for: .raw, publicID: Self.albumPublicID(token: token)) }
 
@@ -196,6 +216,7 @@ struct CloudinaryService {
 
     private static func mimeType(for filename: String) -> String {
         switch (filename as NSString).pathExtension.lowercased() {
+        case "mp4":         return "video/mp4"
         case "jpg", "jpeg": return "image/jpeg"
         case "png":         return "image/png"
         case "gif":         return "image/gif"

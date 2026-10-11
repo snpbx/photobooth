@@ -53,6 +53,10 @@ holds two strips, so they can be cut apart cleanly.
 the venue's wifi, with a *join wifi* code on the finish screen; the printed code
 still points at the permanent online page.
 
+**A film of every session** — the live view, the shutters and each photograph as
+it was taken, ending on the booth's logo: an MP4 a guest can post straight to
+Instagram or TikTok.
+
 **A GIF for every session** — each photograph filling a page in the print's own
 branding, saved beside the photographs, uploaded with them, and carrying its own
 QR code on the finish screen so a guest can take it away there and then.
@@ -349,6 +353,39 @@ that is written to `Application Support/Photobooth/upload-queue.json`
 immediately, and drains whenever the site is next reachable — this launch or
 three days later. Retries back off 30s → 15min. The multipart body is streamed
 to a temp file so a 40-photo session is never held in memory twice.
+
+## The session film
+
+Every session also produces `session.mp4`: the live view as it ran, the shutter
+as a white flash, each photograph held as it was taken, and the booth's own logo
+on the end. It is the thing a guest actually posts — a GIF is a loop, this is the
+visit.
+
+**Encoded as it happens.** A two-minute session at fifteen frames a second is
+eighteen hundred frames; holding them to encode at the end would be gigabytes of
+pixels and a wait the next group would feel. Frames go into an `AVAssetWriter` as
+they arrive, on their own queue, and the file is closed moments after the last
+shot — before the print is even composed.
+
+**H.264 in an MP4**, because posting it is the whole point: Instagram, TikTok,
+WhatsApp and Messages all take that with nothing asked of the phone. A typical
+four-shot session is around 1.5 MB at 720 px.
+
+**Timestamps come from the wall clock**, not a frame counter. The preview
+stutters and stops dead during each capture while the mirror is up; counting
+frames would quietly speed those gaps up until the clip no longer matched what
+happened in the booth. A held photograph is written as two frames — one at each
+end of its span — rather than sixty identical ones.
+
+It travels with everything else: saved beside the photographs, uploaded to
+Cloudinary's video endpoint (its own, separate from images), embedded at the top
+of the session page with `playsinline` so an iPhone does not seize the screen,
+and carrying its own QR code on the finish screen. Served from the Mac it needs
+HTTP range requests — Safari asks for a slice before it will start a video and
+gives up on a plain 200 — so the local server answers `206 Partial Content`.
+
+A session that is cancelled or fails throws its recording away rather than
+leaving half a file behind.
 
 ## The GIF
 

@@ -143,6 +143,8 @@ struct SessionRecord: Codable, Identifiable, Hashable {
     var printFileName: String?
     /// Set once the animated GIF has been written into the session folder.
     var gifFileName: String?
+    /// Set once the session's film has been written into the session folder.
+    var videoFileName: String?
     var printStatus: PrintStatus = .notPrinted
     var printJobID: String?
     var copies: Int = 1
@@ -473,6 +475,19 @@ struct AppSettings: Codable, Equatable {
     /// is the single number that decides the file size.
     var gifLongEdge: Int = 480
     var uploadGIFs: Bool = true
+
+    // The short film of the whole session — what the GIF is not: something a
+    // guest posts.
+    var makeVideo: Bool = true
+    /// Long edge of the clip. 720 is what a phone shows full-screen without
+    /// anybody thinking it looks soft, and the live view rarely has more.
+    var videoLongEdge: Int = 720
+    /// How long each photograph is held in the clip as it is taken.
+    var videoHoldSeconds: Double = 1.2
+    /// A branded card at the end, so a clip posted by a guest says whose booth
+    /// it came from.
+    var videoEndCard: Bool = true
+    var uploadVideos: Bool = true
     var cloudinaryCloudName: String = ""     // from the Cloudinary dashboard
     var cloudinaryPreset: String = ""        // an UNSIGNED upload preset — never a secret
     var albumOutputPath: String = ""         // where album pages are written

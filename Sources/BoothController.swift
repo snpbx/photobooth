@@ -206,6 +206,12 @@ final class BoothController: ObservableObject {
     private var finishHoldTask: Task<Void, Never>?
     private var retakeCurrentRequested = false
     private var cancels = Set<AnyCancellable>()
+    /// The session's film, recorded as it happens. One recorder for the booth's
+    /// whole life: a session that ends badly cancels it rather than leaving a
+    /// writer behind.
+    private let videoRecorder = SessionVideoRecorder()
+    private var videoWanted = false
+    private var videoLastFrame = Date.distantPast
     private var detectTimer: Timer?
 
     var settings: AppSettings { settingsService.settings }
@@ -349,6 +355,9 @@ final class BoothController: ObservableObject {
                 if case .complete = self.state, self.gifQRImage == nil {
                     self.gifQRImage = self.makeGIFQR(for: rec)
                 }
+                if case .complete = self.state, self.videoQRImage == nil {
+                    self.videoQRImage = self.makeVideoQR(for: rec)
+                }
             }
         }
         uploader.publishToPages = { [weak self] eventID, sessionID in
@@ -482,6 +491,7 @@ final class BoothController: ObservableObject {
         made.onFrame = { [weak self] img in
             guard let self, self.wantsLiveView else { return }
             self.livePreview.set(img)
+            self.recordVideoFrame(img)
         }
         camera = made
         activeBackend = backend
@@ -709,6 +719,7 @@ final class BoothController: ObservableObject {
         sessionQRImage = nil
         photoQRs = []
         gifQRImage = nil
+        videoQRImage = nil
         shotPreview = nil
         retakeCurrentRequested = false
         retakeQueue = []
@@ -719,6 +730,8 @@ final class BoothController: ObservableObject {
         updateLiveViewDesire()
 
         plannedShots = total
+        videoWanted = settings.makeVideo
+        videoLastFrame = .distantPast
         reserveSessionPage(rec)
         sessionTask = Task { [weak self] in await self?.runSession(total: total) }
     }
@@ -804,6 +817,11 @@ final class BoothController: ObservableObject {
             }
         }
 
+        // The flash and the photograph go into the film while they are the
+        // thing on screen, so the clip plays back the session rather than
+        // summarising it.
+        recordVideoShot(captured)
+
         // SAVE — before anything else touches the workflow.
         guard var session = currentSession else { return .failed }
         do {
@@ -868,6 +886,15 @@ final class BoothController: ObservableObject {
         guard var session = currentSession else { return }
         state = .generatingPrint
         camera?.stopLiveView()
+
+        // Closed before the print is composed: the live view has stopped, so
+        // nothing more is coming, and the file wants finishing while the guests
+        // are watching the sheet being made rather than after.
+        await finishVideo(for: &session)
+        if session.videoFileName != nil {
+            storage.persist(session)
+            currentSession = session
+        }
 
         let dir = storage.directory(for: session)
         let urls = session.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
@@ -948,6 +975,7 @@ final class BoothController: ObservableObject {
         sessionQRImage = makeQR(for: session)
         photoQRs = makePhotoQRs(for: session)
         gifQRImage = makeGIFQR(for: session)
+        videoQRImage = makeVideoQR(for: session)
         brandQRImage = settings.showQRCode && qrPayloads(for: session).brand != nil ? makeBrandQR() : nil
         let waitingOnUpload = settings.qrRequiresUpload && session.uploadState != .uploaded
         if settings.showQRCode, sessionQRImage == nil, brandQRImage == nil, !waitingOnUpload {
@@ -1042,6 +1070,8 @@ final class BoothController: ObservableObject {
 
     func cancelSession() {
         guard state.isSessionActive else { return }
+        videoWanted = false
+        videoRecorder.cancel()
         sessionTask?.cancel()
         sessionTask = nil
         if let s = currentSession {
@@ -1061,6 +1091,8 @@ final class BoothController: ObservableObject {
     }
 
     private func finishFailed(_ reason: String) {
+        videoWanted = false
+        videoRecorder.cancel()
         if let s = currentSession {
             var rec = s
             rec.finishedAt = Date()
@@ -1188,6 +1220,7 @@ final class BoothController: ObservableObject {
         sessionQRImage = nil
         photoQRs = []
         gifQRImage = nil
+        videoQRImage = nil
         brandQRImage = nil
         let total = plannedShots > 0 ? plannedShots
                                      : (templateShotCount ?? session.layout.photoCount)
@@ -1231,6 +1264,7 @@ final class BoothController: ObservableObject {
         sessionQRImage = nil
         photoQRs = []
         gifQRImage = nil
+        videoQRImage = nil
         brandQRImage = nil
         storage.refreshFreeSpace()
         updateLiveViewDesire()
@@ -1703,6 +1737,13 @@ final class BoothController: ObservableObject {
             return PagesTemplate.PhotoRef(src: src.absoluteString, save: save.absoluteString)
         }()
 
+        let videoRef: PagesTemplate.PhotoRef? = {
+            guard settings.uploadVideos, session.videoFileName != nil,
+                  let src = cloud.videoURL(token: token), let save = cloud.videoSaveURL(token: token)
+            else { return nil }
+            return PagesTemplate.PhotoRef(src: src.absoluteString, save: save.absoluteString)
+        }()
+
         let entries: [PagesTemplate.AlbumEntry] = storage.sessions
             .filter { $0.eventID == eventID && $0.finishedAt != nil && !$0.publicToken.isEmpty }
             .sorted { $0.startedAt < $1.startedAt }
@@ -1722,7 +1763,8 @@ final class BoothController: ObservableObject {
         try await Task.detached(priority: .utility) {
             try publisher.writeSessionPage(session: session, event: event, token: token,
                                            eventToken: eventToken,
-                                           photos: photos, print: printRef, gif: gifRef)
+                                           photos: photos, print: printRef, gif: gifRef,
+                                           video: videoRef)
             try publisher.writeAlbumPage(event: event, eventToken: eventToken, entries: entries)
             try publisher.commitAndPush(message: message)
         }.value
@@ -1789,6 +1831,19 @@ final class BoothController: ObservableObject {
 
         // Sent as-is. Cloudinary re-encodes a GIF it is asked to transform, and
         // the loop was already built at its delivery size.
+        // Video has its own endpoint on Cloudinary; posting an MP4 to the image
+        // one is refused outright.
+        if settings.uploadVideos, let name = session.videoFileName {
+            let src = dir.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: src.path) {
+                _ = try await cloud.upload(fileURL: src,
+                                           publicID: CloudinaryService.photoPublicID(token: token,
+                                                                                     fileName: name),
+                                           type: .video)
+                uploaded += 1
+            }
+        }
+
         if GIFRenderer.enabled, settings.uploadGIFs, let name = session.gifFileName {
             let src = dir.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: src.path) {
@@ -1821,6 +1876,8 @@ final class BoothController: ObservableObject {
     /// page around it: a guest who wants the moving one wants it in their camera
     /// roll before they walk away, not after two more taps.
     @Published private(set) var gifQRImage: NSImage?
+    /// The film's own code — the thing most guests actually want to post.
+    @Published private(set) var videoQRImage: NSImage?
     /// Where this Mac can be reached on the venue's network, and whether the
     /// server is up. Published so the console can show the operator the address
     /// they are about to ask fifty people to scan.
@@ -1886,6 +1943,34 @@ final class BoothController: ObservableObject {
         case .server:
             return nil
         }
+    }
+
+    /// Where the session's film can be watched — this Mac at the venue, the CDN
+    /// afterwards.
+    func videoURL(for rec: SessionRecord) -> URL? {
+        guard let name = rec.videoFileName, !rec.publicToken.isEmpty else { return nil }
+        if let local = localURL(for: rec) {
+            return URL(string: local.absoluteString + name)
+        }
+        guard settings.uploadVideos else { return nil }
+        switch settings.galleryHost {
+        case .cloudinary:
+            return cloudinary?.videoURL(token: rec.publicToken)
+        case .githubPages:
+            guard let base = normalisedSiteBase else { return nil }
+            return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/\(name)")
+        case .server:
+            return nil
+        }
+    }
+
+    private func makeVideoQR(for rec: SessionRecord) -> NSImage? {
+        guard settings.showQRCode else { return nil }
+        if settings.qrRequiresUpload && rec.uploadState != .uploaded && localURL(for: rec) == nil {
+            return nil
+        }
+        guard let url = videoURL(for: rec) else { return nil }
+        return QRCode.image(for: url.absoluteString, minimumSide: 360)
     }
 
     private func makeGIFQR(for rec: SessionRecord) -> NSImage? {
@@ -1985,6 +2070,86 @@ final class BoothController: ObservableObject {
     /// Deliberately literal: whatever cannot be built is simply not shown. A
     /// silent substitution would put a code on the screen that sends guests
     /// somewhere the operator never chose.
+    // MARK: - The session's film
+
+    /// One live-view frame into the clip.
+    ///
+    /// Started on the first frame rather than when the session does: the frame
+    /// is what says how big the clip should be, and a booth whose camera is
+    /// warming up would otherwise fix the shape from a guess.
+    private func recordVideoFrame(_ img: NSImage) {
+        guard videoWanted, state.isSessionActive else { return }
+        if !videoRecorder.isRecording {
+            guard let rec = currentSession else { return }
+            let long = CGFloat(max(360, min(settings.videoLongEdge, 1080)))
+            let w = img.size.width, h = img.size.height
+            guard w > 0, h > 0 else { return }
+            let scale = min(long / max(w, h), 1)
+            let size = CGSize(width: w * scale, height: h * scale)
+            let url = storage.directory(for: rec).appendingPathComponent(SessionVideoRecorder.fileName)
+            do {
+                try videoRecorder.start(url: url, size: size, fps: settings.liveViewFPS)
+                log.info("Recording the session film at \(Int(size.width))×\(Int(size.height))")
+            } catch {
+                videoWanted = false
+                log.warn("Could not start the session film: \(error.localizedDescription)")
+                return
+            }
+        }
+        // The preview can arrive faster than the clip needs; sampling here keeps
+        // the encoder off the main thread's back during a countdown.
+        let gap = 1.0 / Double(max(8, min(settings.liveViewFPS, 30)))
+        guard Date().timeIntervalSince(videoLastFrame) >= gap else { return }
+        videoLastFrame = Date()
+        videoRecorder.append(img)
+    }
+
+    /// The shutter and the photograph it took, held the way the guests saw them.
+    private func recordVideoShot(_ jpeg: Data) {
+        guard videoWanted, videoRecorder.isRecording else { return }
+        let size = CGSize(width: 1280, height: 720)
+        if let flash = SessionVideoRecorder.flash(size: size) {
+            videoRecorder.hold(flash, seconds: 0.12)
+        }
+        if let src = CGImageSourceCreateWithData(jpeg as CFData, nil),
+           let shot = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceThumbnailMaxPixelSize: max(360, min(settings.videoLongEdge, 1080))
+           ] as CFDictionary) {
+            videoRecorder.hold(shot, seconds: max(0.3, min(settings.videoHoldSeconds, 4)))
+        }
+    }
+
+    /// Closes the film: a branded card on the end, then the file.
+    private func finishVideo(for session: inout SessionRecord) async {
+        guard videoWanted, videoRecorder.isRecording else { return }
+        if settings.videoEndCard {
+            let size = CGSize(width: 1280, height: 720)
+            let logo = BrandingAssets.url(for: settings.idleLogoFile)
+                .flatMap { NSImage(contentsOf: $0) }
+                .flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+            if let card = SessionVideoRecorder.card(size: size,
+                                                    backgroundHex: "#000000",
+                                                    logo: logo,
+                                                    title: settings.eventTitle,
+                                                    subtitle: activeEvent?.name ?? "") {
+                videoRecorder.hold(card, seconds: 1.6)
+            }
+        }
+        do {
+            let url = try await videoRecorder.finish()
+            session.videoFileName = url.lastPathComponent
+            let mb = Double((try? Data(contentsOf: url).count) ?? 0) / 1_048_576
+            log.info("Session film saved — \(String(format: "%.1f", mb)) MB")
+        } catch {
+            // Never fatal. The guests have their photographs, their print and
+            // their loop; the film is the one thing here nobody waits for.
+            log.warn("No film for \(session.id): \(error.localizedDescription)")
+        }
+        videoWanted = false
+    }
+
     /// Pushes an empty page at this session's address as it starts.
     ///
     /// GitHub Pages takes twenty-odd seconds to build a push, so a code printed
@@ -2071,7 +2236,8 @@ final class BoothController: ObservableObject {
                     directory: storage.directory(for: rec),
                     photoFiles: rec.photos.sorted { $0.index < $1.index }.map(\.fileName),
                     printFile: rec.printFileName,
-                    gifFile: GIFRenderer.enabled ? rec.gifFileName : nil)
+                    gifFile: GIFRenderer.enabled ? rec.gifFileName : nil,
+                    videoFile: rec.videoFileName)
             }
         LocalGalleryServer.shared.publish(sessions: list,
                                           siteTitle: settings.eventTitle,

@@ -273,7 +273,8 @@ struct PagesPublisher {
                           eventToken: String,
                           photos: [PagesTemplate.PhotoRef],
                           print printRef: PagesTemplate.PhotoRef?,
-                          gif gifRef: PagesTemplate.PhotoRef? = nil) throws {
+                          gif gifRef: PagesTemplate.PhotoRef? = nil,
+                          video videoRef: PagesTemplate.PhotoRef? = nil) throws {
         guard Self.isRepo(repo) else { throw PagesError.notARepo(repo.path) }
         let dir = repo.appendingPathComponent(Self.sessionPath(token: token), isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -283,6 +284,7 @@ struct PagesPublisher {
                                              photos: photos,
                                              print: printRef,
                                              gif: gifRef,
+                                             video: videoRef,
                                              albumHref: "../../\(Self.eventPath(token: eventToken))/",
                                              brandLink: brandLink,
                                              brandLabel: brandLabel)

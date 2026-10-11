@@ -28,6 +28,7 @@ final class LocalGalleryServer: @unchecked Sendable {
         let photoFiles: [String]
         let printFile: String?
         let gifFile: String?
+        let videoFile: String?
     }
 
     static let shared = LocalGalleryServer()
@@ -181,11 +182,25 @@ final class LocalGalleryServer: @unchecked Sendable {
                 self.send(status: "405 Method Not Allowed", body: Data(), type: "text/plain", on: conn)
                 return
             }
-            self.respond(to: String(parts[1]), headOnly: parts[0] == "HEAD", on: conn)
+            // iOS will not play a video from a server that cannot serve part of
+            // a file: Safari asks for a range first and gives up on a 200.
+            var range: (Int, Int?)?
+            for line in head.split(separator: "\r\n").dropFirst()
+            where line.lowercased().hasPrefix("range:") {
+                let spec = line.split(separator: "=").last.map(String.init) ?? ""
+                let ends = spec.split(separator: "-", omittingEmptySubsequences: false)
+                if let start = ends.first.flatMap({ Int($0) }) {
+                    let end = ends.count > 1 ? Int(ends[1]) : nil
+                    range = (start, end)
+                }
+            }
+            self.respond(to: String(parts[1]), headOnly: parts[0] == "HEAD",
+                         range: range, on: conn)
         }
     }
 
-    private func respond(to rawPath: String, headOnly: Bool, on conn: NWConnection) {
+    private func respond(to rawPath: String, headOnly: Bool,
+                         range: (Int, Int?)? = nil, on conn: NWConnection) {
         let path = (rawPath.split(separator: "?").first.map(String.init) ?? "/")
             .removingPercentEncoding ?? "/"
         let parts = path.split(separator: "/").map(String.init)
@@ -219,7 +234,8 @@ final class LocalGalleryServer: @unchecked Sendable {
         // rather than looked up on disk, so no path can be talked into leaving
         // the folder.
         let name = parts[2]
-        let allowed = session.photoFiles + [session.printFile, session.gifFile].compactMap { $0 }
+        let allowed = session.photoFiles
+            + [session.printFile, session.gifFile, session.videoFile].compactMap { $0 }
         guard parts.count == 3, allowed.contains(name) else {
             sendNotFound(on: conn)
             return
@@ -229,9 +245,27 @@ final class LocalGalleryServer: @unchecked Sendable {
             sendNotFound(on: conn)
             return
         }
+        let type: String
+        if name.hasSuffix(".gif") { type = "image/gif" }
+        else if name.hasSuffix(".mp4") { type = "video/mp4" }
+        else { type = "image/jpeg" }
+
+        // A range request gets the slice it asked for, and the 206 that goes
+        // with it; anything else gets the file and a note that ranges are
+        // welcome, which is what makes a phone willing to start a video at all.
+        if let (start, wantedEnd) = range, start < data.count {
+            let end = min(wantedEnd ?? (data.count - 1), data.count - 1)
+            let slice = Data(data[start...end])
+            send(status: "206 Partial Content", body: headOnly ? Data() : slice, type: type,
+                 length: slice.count,
+                 extra: ["Content-Range": "bytes \(start)-\(end)/\(data.count)",
+                         "Accept-Ranges": "bytes"],
+                 on: conn)
+            return
+        }
         send(status: "200 OK", body: headOnly ? Data() : Data(data),
-             type: name.hasSuffix(".gif") ? "image/gif" : "image/jpeg",
-             length: data.count, on: conn)
+             type: type, length: data.count,
+             extra: ["Accept-Ranges": "bytes"], on: conn)
     }
 
     // MARK: - The page
@@ -258,6 +292,7 @@ final class LocalGalleryServer: @unchecked Sendable {
         let photos = s.photoFiles.map { PagesTemplate.PhotoRef(src: $0) }
         let printRef = s.printFile.map { PagesTemplate.PhotoRef(src: $0) }
         let gifRef = s.gifFile.map { PagesTemplate.PhotoRef(src: $0) }
+        let videoRef = s.videoFile.map { PagesTemplate.PhotoRef(src: $0) }
 
         var event = EventRecord(id: "local", name: s.eventName, createdAt: s.startedAt)
         event.date = s.startedAt
@@ -270,6 +305,7 @@ final class LocalGalleryServer: @unchecked Sendable {
                                          photos: photos,
                                          print: printRef,
                                          gif: gifRef,
+                                         video: videoRef,
                                          // No album over the local link: the
                                          // rest of the night belongs to other
                                          // people, and this address has no way
@@ -293,10 +329,11 @@ final class LocalGalleryServer: @unchecked Sendable {
     }
 
     private func send(status: String, body: Data, type: String, length: Int? = nil,
-                      on conn: NWConnection) {
+                      extra: [String: String] = [:], on conn: NWConnection) {
         var head = "HTTP/1.1 \(status)\r\n"
         head += "Content-Type: \(type)\r\n"
         head += "Content-Length: \(length ?? body.count)\r\n"
+        for (k, v) in extra.sorted(by: { $0.key < $1.key }) { head += "\(k): \(v)\r\n" }
         head += "Cache-Control: no-store\r\n"
         head += "Connection: close\r\n\r\n"
         conn.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in

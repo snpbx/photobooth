@@ -709,7 +709,7 @@ enum LayoutRenderer {
                  tracking: size * 0.12)
     }
 
-    private static func drawText(_ ctx: CGContext,
+    static func drawText(_ ctx: CGContext,
                                  _ string: String,
                                  centeredIn rect: CGRect,
                                  fontSize: CGFloat,

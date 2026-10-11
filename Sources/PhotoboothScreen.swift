@@ -454,6 +454,7 @@ private struct CompleteCentre: View {
         var out: [(String, NSImage)] = []
         if c.localServing, let wifi = c.wifiQRImage { out.append(("1 · JOIN WIFI", wifi)) }
         if let all = c.sessionQRImage { out.append(("ALL PHOTOS", all)) }
+        if let video = c.videoQRImage { out.append(("THE VIDEO", video)) }
         if let gif = c.gifQRImage { out.append(("THE GIF", gif)) }
         if let brand = c.brandQRImage { out.append((c.settings.customQRCaption, brand)) }
         out += c.photoQRs.map { ("PHOTO \($0.id)", $0.image) }
@@ -468,6 +469,7 @@ private struct CompleteCentre: View {
         if let qr = c.wifiQRImage, c.localServing {
             out.append(QRCard(image: qr, caption: "1 · JOIN WIFI"))
         }
+        if let qr = c.videoQRImage { out.append(QRCard(image: qr, caption: "SCAN FOR YOUR VIDEO")) }
         if let qr = c.gifQRImage { out.append(QRCard(image: qr, caption: "SCAN FOR YOUR GIF")) }
         if let qr = c.brandQRImage { out.append(QRCard(image: qr, caption: c.settings.customQRCaption)) }
         return out
