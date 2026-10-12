@@ -2,6 +2,9 @@ import SwiftUI
 import AppKit
 
 enum AdminTab: String, CaseIterable, Identifiable {
+    /// The four things an operator touches during an event, at thumb size —
+    /// for running the booth from a phone over screen sharing.
+    case quick = "Quick"
     case control = "Control"
     case gallery = "Sessions"
     case settings = "Settings"
@@ -10,6 +13,7 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var glyph: String {
         switch self {
+        case .quick:    return "hand.tap"
         case .control:  return "slider.horizontal.3"
         case .gallery:  return "photo.stack"
         case .settings: return "gearshape"
@@ -56,6 +60,7 @@ struct AdminScreen: View {
                     Rectangle().fill(Palette.hairline).frame(height: 1)
                     Group {
                         switch tab.wrappedValue {
+                        case .quick:    QuickTab(c: c)
                         case .control:  ControlTab(c: c)
                         case .gallery:  GalleryTab(c: c)
                         case .settings: SettingsTab(c: c)
@@ -329,6 +334,7 @@ private struct ControlTab: View {
                         AnyView(LayoutCard(c: c)),
                         AnyView(SessionCard(c: c)),
                         AnyView(EventCard(c: c)),
+                        AnyView(EventTrackerCard(c: c)),
                         AnyView(CameraCard(c: c, live: c.livePreview)),
                         AnyView(PrinterCard(c: c)),
                         AnyView(BoothButtonCard(c: c, trigger: c.trigger)),

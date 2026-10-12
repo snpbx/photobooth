@@ -49,6 +49,12 @@ that snap.
 **A printed cutting line** — a faint dotted line down the middle of a sheet that
 holds two strips, so they can be cut apart cleanly.
 
+**Event tracker and PDF report** — clients, photographs, sheets and cost as the
+night goes on, exported as a one-page report for the client or the accounts.
+
+**Quick tab** — the four controls an operator needs during an event, at thumb
+size, for running the booth from a phone.
+
 **Dry run** — rehearse a whole evening from the console: real camera, real
 uploads, every layout in turn, and no paper.
 
@@ -618,6 +624,38 @@ thumb; below 360px it steps down again and the grid holds two per row, which is
 what makes it read as a sheet rather than a list. The headline runs 35px on a
 320px phone to 51px at 430, then back up its own curve to 150px on a desktop,
 with nothing jumping at the breakpoint.
+
+## What an event produced, and what it cost
+
+The **Event Tracker** on the Control tab counts clients, photographs, sheets and
+money as the night goes on, and **Export Report** writes it as a one-page PDF:
+the figures, which layouts people took away and how many had each, then every
+session in order — time, layout, photographs, copies, whether it printed.
+
+Both are read from the session records every time rather than tallied as the
+event runs. A second set of books can disagree with the first, and the records
+are what the operator would check anyway. **A sheet counts only once CUPS says
+the job finished**, so a queued or failed sheet is never billed to a client; the
+cost is sheets × the price of paper and ink, which is how SELPHY packs are sold.
+
+**The layout is stamped on the session when it is photographed**, not looked up
+afterwards. An event's layout can be changed between groups, and a report that
+renamed everybody's sheet retrospectively would be worse than no report at all.
+Sessions shot before this keep working — they fall back to the event's layout,
+and then to the built-in they were shot with.
+
+## The Quick tab — running the booth from a phone
+
+Admin assumes a mouse and a window: three columns of cards, hairlines,
+eleven-point captions. None of it survives being driven with a thumb on a phone
+over screen sharing, standing next to the booth.
+
+**Quick** is the four things an operator touches during an event — copies,
+layout, reprint, retake — at 56pt, which is a thumb. Layouts are listed **by
+name**: a sketch of eight grey rectangles tells nobody which is which at arm's
+length, and it halves how many fit on the screen. It is deliberately not a
+responsive version of the Control tab; a layout that collapses gracefully still
+shows everything, and everything is the problem.
 
 ## The dry run
 

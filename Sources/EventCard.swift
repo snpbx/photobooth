@@ -244,6 +244,125 @@ struct EventForm: View {
     }
 }
 
+// MARK: - Event tracker
+
+/// What this event has produced and what it has cost, with the report that goes
+/// to the client — or to the accounts — one press away.
+struct EventTrackerCard: View {
+    @ObservedObject var c: BoothController
+    @State private var exporting = false
+
+    var body: some View {
+        SectionCard(title: "Event Tracker") {
+            if let event = c.activeEvent {
+                let r = c.report(for: event)
+
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    figure("\(r.clients)", "clients")
+                    Spacer(minLength: 8)
+                    figure("\(r.photographs)", "photos")
+                    Spacer(minLength: 8)
+                    figure("\(r.printed)", r.printed == 1 ? "sheet" : "sheets")
+                    Spacer(minLength: 8)
+                    figure(r.money(r.cost), "in paper")
+                }
+                .padding(.vertical, 2)
+
+                if r.pending > 0 || r.failed > 0 {
+                    HStack(spacing: 10) {
+                        if r.pending > 0 {
+                            Text("\(r.pending) queued")
+                                .foregroundStyle(Palette.statusWarn)
+                        }
+                        if r.failed > 0 {
+                            Text("\(r.failed) failed")
+                                .foregroundStyle(Palette.statusBad)
+                        }
+                        Text("— not counted").foregroundStyle(Palette.textDim)
+                    }
+                    .font(.system(size: 11))
+                }
+
+                if !r.layoutCounts.isEmpty {
+                    Divider().opacity(0.4)
+                    OSDLabel(text: "Layouts used", size: 10, color: Palette.textDim, tracking: 0.22)
+                    ForEach(r.layoutCounts, id: \.name) { entry in
+                        HStack {
+                            Text(entry.name).font(.system(size: 12))
+                                .lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text("\(entry.count)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .monospacedDigit()
+                        }
+                    }
+                }
+
+                Divider().opacity(0.4)
+
+                LabeledRow(label: "Cost a sheet",
+                           help: "Paper and ink together, which is how SELPHY packs are sold. The running total and the report both use it.") {
+                    HStack(spacing: 6) {
+                        TextField("", text: Binding(
+                            get: { c.settingsService.settings.currencySymbol },
+                            set: { c.settingsService.settings.currencySymbol = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 44)
+                        TextField("", value: Binding(
+                            get: { c.settingsService.settings.costPerSheet },
+                            set: { c.settingsService.settings.costPerSheet = max(0, $0) }),
+                            format: .number.precision(.fractionLength(0...2)))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                Button {
+                    export(event)
+                } label: {
+                    Label("Export Report (PDF)…", systemImage: "doc.richtext")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(r.clients == 0)
+
+                Text(r.clients == 0
+                     ? "Nothing to report yet — the first finished session starts the tally."
+                     : "One page: who was photographed, which layout they had, what printed, and what it cost.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Choose an event and its tally appears here.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textDim)
+            }
+        }
+    }
+
+    private func figure(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.system(size: 20, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(Palette.textDim)
+        }
+    }
+
+    private func export(_ event: EventRecord) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "\(event.id)-report.pdf"
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if c.exportReport(for: event, to: url) != nil {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
+}
+
 // MARK: - Rehearsal
 
 /// Runs a whole evening against the real camera and the real site, with the

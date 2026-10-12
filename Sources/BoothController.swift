@@ -169,6 +169,49 @@ final class BoothController: ObservableObject {
     /// asked for eight.
     private(set) var plannedShots: Int = 0
 
+    /// What an event produced and what it cost, ready to show or export.
+    ///
+    /// Built from the session records every time rather than tallied as the
+    /// night goes on: a second set of books can disagree with the first, and
+    /// the records are what the operator would check anyway.
+    func report(for event: EventRecord) -> EventReport {
+        EventReport.build(event: event,
+                          sessions: storage.sessions,
+                          costPerSheet: max(0, settings.costPerSheet),
+                          currency: settings.currencySymbol) { [weak self] session in
+            self?.layoutName(for: session) ?? session.layout.title
+        }
+    }
+
+    /// What the operator calls the sheet a session was printed on. A session
+    /// records the built-in layout it started from, so a saved layout has to be
+    /// resolved through the event it belonged to.
+    func layoutName(for session: SessionRecord) -> String {
+        // What was recorded at the time wins. Older sessions fall back to the
+        // event's layout as it stands now, which is a guess, and then to the
+        // built-in they were shot with, which is not.
+        if let recorded = session.layoutName, !recorded.isEmpty { return recorded }
+        if let event = storage.event(session.eventID),
+           let t = templates.template(event.templateID) {
+            return t.name
+        }
+        return session.layout.title
+    }
+
+    /// Writes one event's report as a PDF and hands back where it landed.
+    @discardableResult
+    func exportReport(for event: EventRecord, to url: URL) -> URL? {
+        do {
+            let out = try report(for: event).writePDF(to: url)
+            log.info("Event report written to \(out.path)")
+            show(.info, "Report saved — \(out.lastPathComponent)")
+            return out
+        } catch {
+            show(.error, error.localizedDescription)
+            return nil
+        }
+    }
+
     /// Sheets this event has actually printed, and how many are still in the
     /// printer's queue.
     ///
@@ -705,13 +748,17 @@ final class BoothController: ObservableObject {
         // showing three photographs want three shots, not the eight the
         // built-in layout behind them would have asked for.
         let total = templateShotCount ?? layout.photoCount
-        let rec: SessionRecord
+        var rec: SessionRecord
         do {
             rec = try storage.createSession(eventID: event.id, layout: layout, copies: settings.copies)
         } catch {
             show(.error, error.localizedDescription)
             return
         }
+
+        // Stamped now, while it is true.
+        rec.layoutName = activeTemplate?.name ?? layout.title
+        storage.persist(rec)
 
         currentSession = rec
         sessionPrintImage = nil

@@ -145,6 +145,11 @@ struct SessionRecord: Codable, Identifiable, Hashable {
     var gifFileName: String?
     /// Set once the session's film has been written into the session folder.
     var videoFileName: String?
+    /// What the sheet was called when this session was photographed. Optional
+    /// because sessions predate it — and recorded at the time on purpose: the
+    /// event's layout can be changed afterwards, and a report that renamed
+    /// everybody's sheet retrospectively would be worse than no report.
+    var layoutName: String?
     var printStatus: PrintStatus = .notPrinted
     var printJobID: String?
     var copies: Int = 1
@@ -499,6 +504,11 @@ struct AppSettings: Codable, Equatable {
     /// every page is built from this; 0 shows none. Nothing deletes anything on
     /// its own — this is a promise the operator keeps, not a timer.
     var photoRetentionDays: Int = 14
+    /// What one printed sheet costs — paper and ink together, which is how
+    /// SELPHY packs are sold. Drives the running total per event and the figure
+    /// on the exported report.
+    var costPerSheet: Double = 0.45
+    var currencySymbol: String = "₱"
     var cloudinaryCloudName: String = ""     // from the Cloudinary dashboard
     var cloudinaryPreset: String = ""        // an UNSIGNED upload preset — never a secret
     var albumOutputPath: String = ""         // where album pages are written
