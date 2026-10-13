@@ -1131,6 +1131,31 @@ struct StepPad: View {
     }
 }
 
+/// Up and down, for putting the layouts in the order they are reached for.
+///
+/// Arrows rather than dragging: this card is as often driven with a thumb on a
+/// phone, or at arm's length through screen sharing, as it is with a mouse, and
+/// a drag that has to be held and aimed is the first thing to fail in either.
+private struct MovePad: View {
+    let symbol: String
+    var touch: Bool = false
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: touch ? 13 : 11, weight: .bold))
+                .frame(width: touch ? 44 : 28, height: touch ? 44 : 22)
+                .background(Color.white.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .foregroundStyle(isEnabled ? Palette.text : Palette.textDim.opacity(0.35))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: Layout card
 
 private struct LayoutCard: View {
@@ -1231,6 +1256,12 @@ private struct TemplateChoice: View {
             .buttonStyle(.plain)
 
             HStack(spacing: 8) {
+                if place.count > 1 {
+                    MovePad(symbol: "chevron.up", touch: touch) { c.moveTemplate(template.id, by: -1) }
+                        .disabled(place.index == 0)
+                    MovePad(symbol: "chevron.down", touch: touch) { c.moveTemplate(template.id, by: 1) }
+                        .disabled(place.index == place.count - 1)
+                }
                 Button("Edit") { c.openPrintEditor?(template.id) }
                     .buttonStyle(QuietButtonStyle())
                 if confirmingDelete {
@@ -1247,6 +1278,13 @@ private struct TemplateChoice: View {
                 }
             }
         }
+    }
+
+    /// Where this layout sits in the operator's own order, which is simply the
+    /// order they are stored in.
+    private var place: (index: Int, count: Int) {
+        let all = c.templates.templates
+        return (all.firstIndex { $0.id == template.id } ?? 0, all.count)
     }
 
     private var scope: String {

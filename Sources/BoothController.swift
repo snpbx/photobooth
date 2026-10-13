@@ -160,6 +160,16 @@ final class BoothController: ObservableObject {
         if let e = activeEvent, !e.templateID.isEmpty { setTemplate("", forEvent: e.id) }
     }
 
+    /// Reorders the operator's own layouts, one place at a time.
+    ///
+    /// The one they reach for most belongs at the top, where it can be hit
+    /// without reading the others — on a phone or an arm's length away through
+    /// the booth's own screen that is the whole difference.
+    func moveTemplate(_ id: String, by offset: Int) {
+        templates.move(id, by: offset)
+        objectWillChange.send()
+    }
+
     /// Removes a layout and detaches it from anything still pointing at it, so
     /// no booking is left referring to a template that is gone.
     func deleteTemplate(_ id: String) {

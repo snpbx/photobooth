@@ -760,7 +760,16 @@ them**: the built-ins exist so a booth nobody has set up yet can still print
 something, and the moment the operator has designed a layout of their own they
 stop being a fallback and become three wrong answers above the right one. They
 come back if every saved layout is removed. The same applies to the Quick tab and
-the rehearsal's rota. A booth still standing on a built-in from before — which
+the rehearsal's rota.
+
+**The order is the operator's own.** Each tile carries up and down arrows, and
+the one at the top is the one that can be hit without reading the others — which
+on a phone, or at arm's length through the booth's screen, is the whole
+difference. Arrows rather than dragging, because a drag that has to be held and
+aimed is the first thing to fail in either. The order a layout sits in the file
+*is* its order on the card, in the Quick tab, in the rehearsal's rota and in the
+editor's **Open…** menu, so there is no separate position to keep in step and no
+way for the two to disagree. A booth still standing on a built-in from before — which
 would leave a list with nothing selected in it — moves to the first saved layout
 when the card is next opened. Edit and Remove
 sit on the tile — a layout is a thing the operator made, so managing it belongs

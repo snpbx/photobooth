@@ -255,6 +255,19 @@ final class TemplateStore: ObservableObject {
         persist()
     }
 
+    /// Moves a layout one place up or down the list.
+    ///
+    /// The order in the file *is* the order on the Print Layout card and in
+    /// every other chooser, so there is no separate position to keep in step —
+    /// and no way for the two to disagree.
+    func move(_ id: String, by offset: Int) {
+        guard let i = templates.firstIndex(where: { $0.id == id }) else { return }
+        let j = i + offset
+        guard templates.indices.contains(j) else { return }
+        templates.swapAt(i, j)
+        persist()
+    }
+
     func duplicate(_ id: String) -> PrintTemplate? {
         guard var t = template(id) else { return nil }
         t.id = UUID().uuidString
