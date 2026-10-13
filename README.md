@@ -790,6 +790,14 @@ about the sheet. Nudges are a percent, ten pixels or a twentieth of an inch; one
 pixel at 300 DPI is a third of a millimetre, which nobody would see and everybody
 would have to press forty times.
 
+**An image can be inverted.** A logo drawn white for the booth's black screen is
+invisible on white paper, and most operators have one file rather than two.
+*Invert the colours* turns the artwork over — white becomes black — and leaves
+transparency alone, so a mark on nothing stays a mark on nothing rather than
+gaining a black box. The editor shows it inverted as it will print; the renderer
+does the same thing with `CIColorInvert`, cached, since a proof, a GIF frame and
+the real sheet all ask for the same picture.
+
 **A sheet can carry more than one code.** *Add → QR code box* puts one down and
 the button then offers another; each is selected, dragged, sized and removed on
 its own. Two is the useful number: a sheet cut into strips leaves with two

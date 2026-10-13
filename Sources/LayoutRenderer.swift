@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CoreGraphics
+import CoreImage
 import CoreText
 import ImageIO
 import UniformTypeIdentifiers
@@ -329,7 +330,8 @@ enum LayoutRenderer {
         return try draw(canvas: canvas, settings: s) { ctx in
             func drawOverlays(behind: Bool) {
                 for o in template.overlays where o.behindPhotos == behind {
-                    guard !o.file.isEmpty, let img = overlayImage(o.file) else { continue }
+                    guard !o.file.isEmpty, let loaded = overlayImage(o.file) else { continue }
+                    let img = o.inverted ? (inverted(loaded) ?? loaded) : loaded
                     let r = flip(o.rect.rect(in: canvas), canvasH: canvas.height)
                     ctx.saveGState()
                     turn(ctx, o.rotation, about: r)
@@ -537,6 +539,35 @@ enum LayoutRenderer {
         ctx.strokePath()
         ctx.restoreGState()
     }
+
+    /// The same artwork with its colours turned over and its transparency left
+    /// alone, so a white-on-nothing logo becomes a black-on-nothing one.
+    ///
+    /// Cached by the image it was made from: a sheet draws its overlays once,
+    /// but a proof, a GIF frame and the real print all ask for the same picture,
+    /// and inverting is the only expensive thing done to one.
+    static func inverted(_ image: CGImage) -> CGImage? {
+        invertLock.lock()
+        if let hit = invertCache.object(forKey: ObjectIdentifier(image).hashValue as NSNumber) {
+            invertLock.unlock()
+            return hit
+        }
+        invertLock.unlock()
+
+        guard let filter = CIFilter(name: "CIColorInvert") else { return nil }
+        filter.setValue(CIImage(cgImage: image), forKey: kCIInputImageKey)
+        guard let output = filter.outputImage,
+              let made = ciContext.createCGImage(output, from: output.extent) else { return nil }
+
+        invertLock.lock()
+        invertCache.setObject(made, forKey: ObjectIdentifier(image).hashValue as NSNumber)
+        invertLock.unlock()
+        return made
+    }
+
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    private static let invertCache = NSCache<NSNumber, CGImage>()
+    private static let invertLock = NSLock()
 
     /// Turns everything drawn after it about the centre of `rect`.
     ///

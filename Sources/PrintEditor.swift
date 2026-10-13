@@ -280,7 +280,12 @@ struct PrintEditorView: View {
         box(o.rect, sheet: sheet, id: o.id, rotation: o.rotation) {
             Group {
                 if let u = BrandingAssets.url(for: o.file), let img = NSImage(contentsOf: u) {
-                    Image(nsImage: img).resizable().scaledToFit().opacity(o.opacity)
+                    // `colorInvert` leaves transparency alone, the same way the
+                    // renderer's filter does, so what is drawn here is what the
+                    // sheet will carry.
+                    Image(nsImage: img).resizable().scaledToFit()
+                        .modifier(InvertIf(on: o.inverted))
+                        .opacity(o.opacity)
                 } else {
                     ZStack {
                         Rectangle().fill(Palette.canvas)
@@ -813,6 +818,15 @@ struct PrintEditorView: View {
                     get: { draft.overlays[i].behindPhotos },
                     set: { draft.overlays[i].behindPhotos = $0; dirty = true }))
                     .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Invert the colours", isOn: Binding(
+                        get: { draft.overlays[i].inverted },
+                        set: { draft.overlays[i].inverted = $0; dirty = true }))
+                        .font(.system(size: 12))
+                    Text("Turns the artwork over — white becomes black — and leaves transparency alone. A logo drawn white for the booth screen is invisible on white paper, and this saves keeping a second file.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack(spacing: 8) {
                     Button("Bring forward") {
                         guard i < draft.overlays.count - 1 else { return }
@@ -1270,5 +1284,14 @@ private struct CutGuideLine: View {
         }
         .frame(width: sheet.width, height: sheet.height)
         .allowsHitTesting(false)
+    }
+}
+
+/// `colorInvert` cannot be applied conditionally inline without changing the
+/// view's type, which SwiftUI will not have in a `Group` branch.
+private struct InvertIf: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.colorInvert() } else { content }
     }
 }

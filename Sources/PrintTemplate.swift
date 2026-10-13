@@ -135,6 +135,11 @@ struct TemplateOverlay: Codable, Identifiable, Hashable {
     /// Degrees clockwise about the image's own centre — a sticker pinned on at
     /// an angle, a logo set square.
     var rotation: Double = 0
+    /// Turns the artwork's colours over, alpha untouched.
+    ///
+    /// Almost always for one reason: a logo drawn white for a dark screen is
+    /// invisible on white paper, and the operator has one file, not two.
+    var inverted: Bool = false
 }
 
 // MARK: - Lenient decoding
@@ -189,6 +194,7 @@ extension TemplateOverlay {
         opacity      = try c.decodeIfPresent(Double.self,   forKey: .opacity)      ?? opacity
         behindPhotos = try c.decodeIfPresent(Bool.self,     forKey: .behindPhotos) ?? behindPhotos
         rotation     = try c.decodeIfPresent(Double.self,   forKey: .rotation)     ?? rotation
+        inverted     = try c.decodeIfPresent(Bool.self,     forKey: .inverted)     ?? inverted
     }
 }
 
