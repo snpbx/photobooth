@@ -754,8 +754,15 @@ which is how a strip gets printed twice), overlay images for logos and stickers
 that sit either over or behind the photographs, a border, a background, and an
 optional box for the guest QR code.
 
-Saved layouts appear on the **Print Layout** card beside the three built-in ones,
-each with a sketch of its own slots, and are chosen the same way. Edit and Remove
+Saved layouts appear on the **Print Layout** card, each with a sketch of its own
+slots. **They replace the three built-in ones there rather than sitting beneath
+them**: the built-ins exist so a booth nobody has set up yet can still print
+something, and the moment the operator has designed a layout of their own they
+stop being a fallback and become three wrong answers above the right one. They
+come back if every saved layout is removed. The same applies to the Quick tab and
+the rehearsal's rota. A booth still standing on a built-in from before — which
+would leave a list with nothing selected in it — moves to the first saved layout
+when the card is next opened. Edit and Remove
 sit on the tile — a layout is a thing the operator made, so managing it belongs
 where it is chosen rather than behind another window. Removing one detaches it
 from anything still pointing at it, so no booking is left referring to a layout

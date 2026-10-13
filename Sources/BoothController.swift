@@ -123,6 +123,15 @@ final class BoothController: ObservableObject {
         return templates.template(settings.activeTemplateID)
     }
 
+    /// Whether the three arrangements the booth ships with are offered at all.
+    ///
+    /// They are there so a booth nobody has set up yet can still print
+    /// something. The moment the operator has designed a layout of their own,
+    /// the built-ins stop being a fallback and become three wrong answers
+    /// sitting above the right one — so they go away, everywhere a layout is
+    /// chosen.
+    var showsBuiltInLayouts: Bool { templates.templates.isEmpty }
+
     /// Chooses a saved layout at whichever level applies: the booking being shot
     /// if there is one, otherwise the booth's own default.
     func useTemplate(_ id: String) {
@@ -131,6 +140,15 @@ final class BoothController: ObservableObject {
         } else {
             settingsService.settings.activeTemplateID = id
         }
+    }
+
+    /// Moves the booth off a built-in arrangement once the operator has layouts
+    /// of their own, so the chooser never shows a list with nothing selected in
+    /// it while the sheet quietly comes out in some older shape.
+    func adoptOwnLayoutIfNeeded() {
+        guard !showsBuiltInLayouts, activeTemplate == nil,
+              let first = templates.templates.first else { return }
+        useTemplate(first.id)
     }
 
     /// Goes back to one of the three built-in arrangements. Clears the template
@@ -2138,8 +2156,9 @@ final class BoothController: ObservableObject {
 
     /// Every arrangement the booth could print, in the order the rota uses them.
     var dryRunLayouts: [DryRunLayout] {
-        PrintLayout.allCases.map { .builtIn($0) }
-            + templates.templates.map { .template(id: $0.id, name: $0.name) }
+        let builtIns: [DryRunLayout] = showsBuiltInLayouts
+            ? PrintLayout.allCases.map { .builtIn($0) } : []
+        return builtIns + templates.templates.map { .template(id: $0.id, name: $0.name) }
     }
 
     var isDryRunning: Bool { dryRunTask != nil }

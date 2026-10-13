@@ -32,6 +32,7 @@ struct QuickTab: View {
             .frame(maxWidth: 560)
             .frame(maxWidth: .infinity)
         }
+        .onAppear { c.adoptOwnLayoutIfNeeded() }
     }
 
     // MARK: Where things stand

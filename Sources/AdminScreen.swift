@@ -1138,23 +1138,20 @@ private struct LayoutCard: View {
 
     var body: some View {
         SectionCard(title: "Print Layout") {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 10) { choices }
-                VStack(alignment: .leading, spacing: 10) { choicesWide }
+            if c.showsBuiltInLayouts {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 10) { choices }
+                    VStack(alignment: .leading, spacing: 10) { choicesWide }
+                }
+            } else {
+                ForEach(c.templates.templates) { t in
+                    TemplateChoice(template: t, c: c)
+                }
             }
 
             Divider().opacity(0.4)
 
             CopiesPicker(c: c)
-
-            if !c.templates.templates.isEmpty {
-                Divider().overlay(Palette.hairline)
-                OSDLabel(text: "Your layouts", size: 10, weight: .semibold,
-                         color: Palette.textDim, tracking: 0.22)
-                ForEach(c.templates.templates) { t in
-                    TemplateChoice(template: t, c: c)
-                }
-            }
 
             Divider().overlay(Palette.hairline)
 
@@ -1165,6 +1162,11 @@ private struct LayoutCard: View {
                 set: { c.settingsService.settings.autoPrint = $0 }))
                 .font(.system(size: 12))
         }
+        // A built-in can still be the booth's standing choice from before the
+        // operator designed anything. With the three of them hidden, nothing
+        // here would show as selected while the booth quietly went on printing
+        // one, so the first of their own takes over.
+        .onAppear { c.adoptOwnLayoutIfNeeded() }
     }
 
     @ViewBuilder private var choices: some View {
@@ -1185,7 +1187,7 @@ private struct LayoutCard: View {
 /// The value only ever runs 1–10, so there is nothing worth typing, and on a
 /// touch screen a text field means the on-screen keyboard covering the panel to
 /// enter a single digit. One tap sets it.
-/// One of the operator's own layouts, alongside the built-in three.
+/// One of the operator's own layouts.
 ///
 /// Carries its own edit and remove controls: a layout is a thing they made, and
 /// managing it belongs where it is chosen rather than behind another window.
