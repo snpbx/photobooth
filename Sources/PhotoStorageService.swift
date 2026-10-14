@@ -230,6 +230,24 @@ final class PhotoStorageService: ObservableObject {
         return Photo(index: index, fileName: name, capturedAt: Date(), width: w, height: h)
     }
 
+    /// Keeps the colour frame beside a photograph that was saved in black and
+    /// white.
+    ///
+    /// The same reasoning as a retake: the booth converting a frame is not a
+    /// reason to destroy the only copy of it. Nothing reads these — every
+    /// output, page and upload works from the session's own list of
+    /// photographs — so they simply sit in the folder for the operator who is
+    /// asked for them the next day.
+    func archiveColour(jpeg: Data, index: Int, in session: SessionRecord) {
+        let name = String(format: "photo-%02d.colour.jpg", index)
+        let dest = directory(for: session).appendingPathComponent(name)
+        do {
+            try jpeg.write(to: dest, options: .atomic)
+        } catch {
+            Log.shared.warn("Could not keep the colour frame \(session.id)/\(name): \(error.localizedDescription)")
+        }
+    }
+
     /// Replaces the photo at `index` with a fresh capture.
     ///
     /// The superseded frame is renamed rather than deleted — a guest asking for a
@@ -357,7 +375,14 @@ final class PhotoStorageService: ObservableObject {
     private func rebuildRecord(from dir: URL) -> SessionRecord? {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: dir.path) else { return nil }
-        let photoFiles = files.filter { $0.hasPrefix("photo-") && $0.hasSuffix(".jpg") }.sorted()
+        // Only the photographs themselves. The folder may also hold the frame a
+        // retake superseded and the colour original of one shot in black and
+        // white; both are kept deliberately, and neither is a photograph this
+        // session took.
+        let photoFiles = files.filter {
+            $0.hasPrefix("photo-") && $0.hasSuffix(".jpg")
+                && !$0.contains(".retake-") && !$0.contains(".colour.")
+        }.sorted()
         guard !photoFiles.isEmpty else { return nil }
 
         let id = dir.lastPathComponent

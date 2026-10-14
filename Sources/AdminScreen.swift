@@ -1176,6 +1176,10 @@ private struct LayoutCard: View {
 
             Divider().opacity(0.4)
 
+            FinishPicker(c: c)
+
+            Divider().opacity(0.4)
+
             CopiesPicker(c: c)
 
             Divider().overlay(Palette.hairline)
@@ -1345,6 +1349,77 @@ private struct CopiesPicker: View {
             }
 
         }
+    }
+}
+
+/// Colour or black and white, directly under the layouts.
+///
+/// Under them rather than beside them because it is the second question, not a
+/// second list: the arrangement is chosen, and then how the photographs in it
+/// are finished. Two wide buttons rather than a switch — "Black and white" off
+/// reads as a feature that is turned off, where the booth is really being told
+/// one of two equally ordinary things.
+private struct FinishPicker: View {
+    @ObservedObject var c: BoothController
+    @Environment(\.touchControls) private var touch
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: touch ? 10 : 5) {
+            HStack(spacing: 8) {
+                Text("Finish").font(.system(size: touch ? 14 : 12, weight: .medium))
+                Spacer(minLength: 8)
+                Text(c.settings.monochrome ? "Photographs in black and white"
+                                           : "Photographs in colour")
+                    .font(.system(size: touch ? 12 : 11))
+                    .foregroundStyle(Palette.textDim)
+                    .lineLimit(1)
+            }
+            HStack(spacing: touch ? 8 : 6) {
+                FinishChoice(title: "Colour", symbol: "camera.filters",
+                             selected: !c.settings.monochrome, touch: touch) {
+                    c.settingsService.settings.monochrome = false
+                }
+                FinishChoice(title: "Black & white", symbol: "circle.lefthalf.filled",
+                             selected: c.settings.monochrome, touch: touch) {
+                    c.settingsService.settings.monochrome = true
+                }
+            }
+            if c.settings.monochrome {
+                Text("Applied as each shot is saved, so the print, the page, the loop and the clip match. The colour frame is kept in the session folder.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct FinishChoice: View {
+    let title: String
+    let symbol: String
+    let selected: Bool
+    let touch: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: symbol).font(.system(size: touch ? 15 : 12, weight: .semibold))
+                Text(title)
+                    .font(.system(size: touch ? 14 : 12, weight: selected ? .semibold : .regular))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: touch ? 56 : 34)
+            .background(selected ? Palette.ink : Color.white.opacity(0.05),
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .foregroundStyle(selected ? Palette.paper : Palette.text)
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(selected ? Palette.ink : Palette.hairline, lineWidth: 1)
+                .allowsHitTesting(false))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

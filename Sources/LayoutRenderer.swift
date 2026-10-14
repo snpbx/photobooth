@@ -873,6 +873,24 @@ enum LayoutRenderer {
         return jpegData(from: out, dpi: dpi)
     }
 
+    /// The same photograph in black and white, at its own size and DPI.
+    ///
+    /// `CIPhotoEffectMono` rather than simply draining the colour out: a flat
+    /// desaturation leaves a red dress and a green wall the same middling grey,
+    /// because they were about as bright as each other. The mono filter carries
+    /// a film's own tonal curve, which separates them — and on a dye-sublimation
+    /// printer, where grey is three inks laid over one another, a picture with
+    /// no blacks and no whites in it is the one that comes out looking muddy.
+    static func monochromeJPEG(_ data: Data, dpi: Int) -> Data? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil),
+              let filter = CIFilter(name: "CIPhotoEffectMono") else { return nil }
+        filter.setValue(CIImage(cgImage: cg), forKey: kCIInputImageKey)
+        guard let output = filter.outputImage,
+              let made = ciContext.createCGImage(output, from: output.extent) else { return nil }
+        return jpegData(from: made, dpi: dpi)
+    }
+
     static func jpegData(from image: CGImage, dpi: Int) -> Data? {
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil)

@@ -23,8 +23,9 @@ struct QuickTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 status
-                copies
                 layouts
+                finish
+                copies
                 actions
                 retakes
             }
@@ -119,6 +120,39 @@ struct QuickTab: View {
                 .disabled(c.state.isSessionActive)
             }
         }
+    }
+
+    // MARK: Colour or black and white
+
+    /// The second question, straight under the layouts: the arrangement is
+    /// chosen, and then how the photographs in it are finished.
+    private var finish: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            heading("Finish", detail: c.settings.monochrome ? "Black & white" : "Colour")
+            HStack(spacing: 8) {
+                finishButton("Colour", on: !c.settings.monochrome) {
+                    c.settingsService.settings.monochrome = false
+                }
+                finishButton("Black & white", on: c.settings.monochrome) {
+                    c.settingsService.settings.monochrome = true
+                }
+            }
+        }
+    }
+
+    private func finishButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: on ? .semibold : .regular))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: tap)
+                .background(on ? Palette.ink : Palette.surfaceAlt,
+                            in: RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(on ? Palette.paper : Palette.text)
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 
     private func isSelected(_ choice: DryRunLayout) -> Bool {

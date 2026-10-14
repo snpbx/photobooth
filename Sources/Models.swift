@@ -421,6 +421,14 @@ struct AppSettings: Codable, Equatable {
     var borderless: Bool = true
     var dpi: Int = 300
     var cropMode: CropMode = .fill
+    /// Photographs in black and white rather than colour.
+    ///
+    /// Applied once, to the frame as it is saved, so the print, the strip on
+    /// the web page, the loop, the clip and the review screen are all the same
+    /// photograph — anything applied per output could only ever disagree with
+    /// the others. The colour frame is kept beside it in the session folder,
+    /// so a client who changes their mind the next day has not lost anything.
+    var monochrome: Bool = false
     var outerMarginInches: Double = 0.20
     var gutterInches: Double = 0.07
     var backgroundHex: String = "#FFFFFF"

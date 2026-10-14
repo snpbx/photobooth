@@ -762,6 +762,23 @@ stop being a fallback and become three wrong answers above the right one. They
 come back if every saved layout is removed. The same applies to the Quick tab and
 the rehearsal's rota.
 
+**Colour or black and white** sits directly under the layouts, because it is
+the second question rather than a second list: the arrangement is chosen, and
+then how the photographs in it are finished. The conversion happens **once, to
+the frame as it is saved**, so the print, the strip on the web page, the loop,
+the clip and the review screen are all the same photograph — five separate
+conversions could only ever end up disagreeing with each other. It uses a film's
+own tonal curve rather than simply draining the colour out: a flat desaturation
+leaves a red dress and a green wall the same middling grey because they were
+about as bright as one another, and on a dye-sublimation printer a picture with
+no blacks and no whites in it is the one that comes out muddy. Only the
+photographs change — the background, border and the operator's own logos keep
+their colour, so a layout can be mono by design or not as they please. **The
+colour frame is kept** beside the photograph as `photo-NN.colour.jpg`: an evening
+shot in black and white is a choice, not a reason to destroy the only copy. Those
+files are deliberately invisible to the booth itself, which works from the
+session's own list of photographs.
+
 **The order is the operator's own.** Each tile carries up and down arrows, and
 the one at the top is the one that can be hit without reading the others — which
 on a phone, or at arm's length through the booth's screen, is the whole

@@ -892,6 +892,26 @@ final class BoothController: ObservableObject {
             }
         }
 
+        // Black and white, applied to the frame itself rather than to each
+        // output in turn: the print, the strip on the web page, the loop, the
+        // clip and the review screen are then all the same photograph, where
+        // five conversions could only ever end up disagreeing. The colour
+        // original is carried along to be kept beside it — an evening shot in
+        // black and white is a choice, not a reason to destroy the only copy.
+        var colourOriginal: Data?
+        if settings.monochrome {
+            let dpi = settings.dpi
+            let source = captured
+            if let mono = await Task.detached(priority: .userInitiated, operation: {
+                LayoutRenderer.monochromeJPEG(source, dpi: dpi)
+            }).value {
+                colourOriginal = captured
+                captured = mono
+            } else {
+                log.warn("Shot \(shot) could not be converted to black and white — kept in colour.")
+            }
+        }
+
         // The flash and the photograph go into the film while they are the
         // thing on screen, so the clip plays back the session rather than
         // summarising it.
@@ -912,6 +932,9 @@ final class BoothController: ObservableObject {
             if replacing { session.retakenShots.append(shot) }
             currentSession = session
             storage.persist(session)
+            if let colourOriginal {
+                storage.archiveColour(jpeg: colourOriginal, index: shot, in: session)
+            }
             camera?.didPersistLastCapture()
         } catch {
             log.error("Could not save shot \(shot): \(error.localizedDescription)")
