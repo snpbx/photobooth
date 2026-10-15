@@ -49,9 +49,16 @@ final class SessionVideoRecorder: @unchecked Sendable {
     private var startedAt: Date?
     private var lastPresented: CMTime = .zero
     private var frameCount = 0
+    /// Set while `finish()` is closing the file.
+    ///
+    /// The writer is still the live one during that stretch, but a clip being
+    /// written is not a clip that can take frames — and a booth that started a
+    /// second film here would point it at the path the first is still finishing
+    /// into, leaving an empty file where the session's film should be.
+    private var finishing = false
     private(set) var url: URL?
 
-    var isRecording: Bool { writer != nil }
+    var isRecording: Bool { queue.sync { writer != nil || finishing } }
 
     // MARK: - Starting
 
@@ -61,6 +68,9 @@ final class SessionVideoRecorder: @unchecked Sendable {
     ///     encode an odd dimension.
     func start(url target: URL, size wanted: CGSize, fps wantedFPS: Int) throws {
         try queue.sync {
+            guard !finishing else {
+                throw VideoError.writerFailed("the previous film is still being written")
+            }
             try? FileManager.default.removeItem(at: target)
             let w = max(160, Int(wanted.width.rounded()) & ~1)
             let h = max(160, Int(wanted.height.rounded()) & ~1)
@@ -193,11 +203,14 @@ final class SessionVideoRecorder: @unchecked Sendable {
     /// black rectangle, which looks like a broken booth rather than a quiet one.
     func finish() async throws -> URL {
         let (writer, input, frames, target): (AVAssetWriter?, AVAssetWriterInput?, Int, URL?) =
-            queue.sync { (self.writer, self.input, self.frameCount, self.url) }
+            queue.sync {
+                self.finishing = true
+                return (self.writer, self.input, self.frameCount, self.url)
+            }
         defer {
             queue.sync {
                 self.writer = nil; self.input = nil; self.adaptor = nil
-                self.startedAt = nil; self.frameCount = 0
+                self.startedAt = nil; self.frameCount = 0; self.finishing = false
             }
         }
         guard let writer, let input, let target else { throw VideoError.noFrames }
@@ -211,6 +224,17 @@ final class SessionVideoRecorder: @unchecked Sendable {
         await writer.finishWriting()
         if writer.status == .failed {
             throw VideoError.writerFailed(writer.error?.localizedDescription ?? "unknown")
+        }
+        // The writer can report itself content and still leave nothing on disk —
+        // it did, when a second recording replaced this file while this one was
+        // closing. An empty MP4 is worse than no MP4: it plays as a black
+        // rectangle, and an upload of it is refused outright, which used to take
+        // the session's photographs down with it.
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: target.path))
+            .flatMap { $0[.size] as? Int } ?? 0
+        guard bytes > 0 else {
+            try? FileManager.default.removeItem(at: target)
+            throw VideoError.noFrames
         }
         return target
     }

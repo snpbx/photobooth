@@ -308,6 +308,7 @@ final class BoothController: ObservableObject {
         uploader.configure(s.settings)
 
         log.info("Photobooth launched — root \(storage.root.path)")
+        healEmptyVideos()
 
         // dropFirst: the initial value is already applied above, and letting it
         // through would race a second camera connect against the one below.
@@ -1944,7 +1945,7 @@ final class BoothController: ObservableObject {
         // one is refused outright.
         if settings.uploadVideos, let name = session.videoFileName {
             let src = dir.appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: src.path) {
+            if hasBytes(src) {
                 _ = try await cloud.upload(fileURL: src,
                                            publicID: CloudinaryService.photoPublicID(token: token,
                                                                                      fileName: name),
@@ -1955,7 +1956,7 @@ final class BoothController: ObservableObject {
 
         if GIFRenderer.enabled, settings.uploadGIFs, let name = session.gifFileName {
             let src = dir.appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: src.path) {
+            if hasBytes(src) {
                 _ = try await cloud.upload(fileURL: src,
                                            publicID: CloudinaryService.photoPublicID(token: token,
                                                                                      fileName: GIFRenderer.fileName),
@@ -1966,6 +1967,46 @@ final class BoothController: ObservableObject {
 
         guard uploaded > 0 else { throw CloudinaryError.nothingToUpload }
         log.info("Published \(session.id) to Cloudinary — \(uploaded) file(s)")
+    }
+
+    /// Forgets a film that is not there, once, at launch.
+    ///
+    /// A session recorded as having a clip that is missing or empty could never
+    /// publish: the upload was refused, and the refusal took the photographs,
+    /// the print and the page down with it, every quarter of an hour, for ever.
+    /// Clearing the name is the whole repair — the guests lose a clip that was
+    /// never written, and get the page they have been waiting for.
+    private func healEmptyVideos() {
+        var healed = 0
+        for rec in storage.sessions {
+            guard let name = rec.videoFileName else { continue }
+            let url = storage.directory(for: rec).appendingPathComponent(name)
+            let size = ((try? FileManager.default
+                .attributesOfItem(atPath: url.path))?[.size] as? Int) ?? 0
+            guard size <= 0 else { continue }
+            try? FileManager.default.removeItem(at: url)
+            var fixed = rec
+            fixed.videoFileName = nil
+            storage.persist(fixed)
+            healed += 1
+            log.warn("Session \(rec.id) had an empty film — dropped, so the rest can publish.")
+        }
+        // The queue has been backing off for hours on a refusal that is now
+        // gone; without this the repaired sessions would sit there for another
+        // quarter of an hour saying nothing.
+        if healed > 0 { uploader.clearFailures() }
+    }
+
+    /// Whether a file is there *and* has something in it.
+    ///
+    /// Existence alone was the old test, and an empty file passed it. Cloudinary
+    /// refuses one with a 400, the refusal threw, and the throw took the whole
+    /// session with it — photographs, print, loop and page — over a clip nobody
+    /// had asked for. A file with nothing in it is simply not a file to send.
+    private func hasBytes(_ url: URL) -> Bool {
+        guard let size = (try? FileManager.default
+            .attributesOfItem(atPath: url.path))?[.size] as? Int else { return false }
+        return size > 0
     }
 
     // MARK: - QR handout
@@ -2356,6 +2397,11 @@ final class BoothController: ObservableObject {
     /// Closes the film: a branded card on the end, then the file.
     private func finishVideo(for session: inout SessionRecord) async {
         guard videoWanted, videoRecorder.isRecording else { return }
+        // Before anything is awaited. Closing the file takes a moment, the live
+        // view goes on delivering frames while it does, and a frame arriving
+        // with this still set is all it takes to start a second film writing
+        // over the one being finished.
+        videoWanted = false
         if settings.videoEndCard {
             let size = CGSize(width: 1280, height: 720)
             let logo = BrandingAssets.url(for: settings.idleLogoFile)
@@ -2379,7 +2425,6 @@ final class BoothController: ObservableObject {
             // their loop; the film is the one thing here nobody waits for.
             log.warn("No film for \(session.id): \(error.localizedDescription)")
         }
-        videoWanted = false
     }
 
     /// Pushes an empty page at this session's address as it starts.
