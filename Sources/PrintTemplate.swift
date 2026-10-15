@@ -250,6 +250,16 @@ final class TemplateStore: ObservableObject {
         persist()
     }
 
+    /// Replaces the whole set at once.
+    ///
+    /// For the sync, which has already decided — layout by layout — what the
+    /// set should be. Saving them one at a time would write the file once per
+    /// layout and leave it briefly holding a half-merged library.
+    func replaceAll(_ list: [PrintTemplate]) {
+        templates = list
+        persist()
+    }
+
     func delete(_ id: String) {
         templates.removeAll { $0.id == id }
         persist()

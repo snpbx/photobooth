@@ -1186,6 +1186,9 @@ private struct LayoutCard: View {
 
             Button("Design a new layout…") { c.openPrintEditor?(nil) }
                 .buttonStyle(QuietButtonStyle())
+
+            LayoutSyncRow(c: c)
+
             Toggle("Print automatically when a session finishes", isOn: Binding(
                 get: { c.settingsService.settings.autoPrint },
                 set: { c.settingsService.settings.autoPrint = $0 }))
@@ -1349,6 +1352,64 @@ private struct CopiesPicker: View {
             }
 
         }
+    }
+}
+
+/// Layouts across two Macs, on the card where layouts live.
+///
+/// One button, because there is only one thing to want: whatever either Mac has
+/// designed, on both of them. What it did is said in a line underneath rather
+/// than in a dialog — a sync that took two layouts and sent one is worth
+/// reading, not worth dismissing.
+private struct LayoutSyncRow: View {
+    @ObservedObject var c: BoothController
+    @ObservedObject private var sync: LayoutSync
+
+    init(c: BoothController) {
+        self.c = c
+        self.sync = c.layoutSync
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Button(sync.status.isWorking ? "Syncing…" : "Sync layouts with my other Mac") {
+                    c.syncLayouts()
+                }
+                .buttonStyle(QuietButtonStyle())
+                // Not in the middle of a session: this can change the layout
+                // the guests standing there are about to be printed on.
+                .disabled(sync.status.isWorking || !sync.isConfigured || c.state.isSessionActive)
+                if sync.status.isWorking {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            if let line = note {
+                Text(line)
+                    .font(.system(size: 11))
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var note: String? {
+        switch sync.status {
+        case .idle:
+            return sync.isConfigured
+                ? "Takes whatever the other Mac has designed and sends whatever this one has."
+                : "This Mac's settings folder is not a repository yet — see the README."
+        case .working:      return nil
+        case .done(let at, let what):
+            let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none
+            return "\(what.prefix(1).uppercased())\(what.dropFirst()) · \(f.string(from: at))"
+        case .failed(let why): return why
+        }
+    }
+
+    private var tint: Color {
+        if case .failed = sync.status { return Palette.ember }
+        return Palette.textDim
     }
 }
 

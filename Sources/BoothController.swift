@@ -110,6 +110,8 @@ final class BoothController: ObservableObject {
 
     let settingsService: SettingsService
     let templates = TemplateStore()
+    /// Carries the layouts between this Mac and the operator's other one.
+    let layoutSync = LayoutSync()
 
     /// The template every sheet is composed against, or nil for the built-in
     /// layouts.
@@ -158,6 +160,21 @@ final class BoothController: ObservableObject {
         settingsService.settings.layout = layout
         settingsService.settings.activeTemplateID = ""
         if let e = activeEvent, !e.templateID.isEmpty { setTemplate("", forEvent: e.id) }
+    }
+
+    /// Fetches the layouts the other Mac pushed, keeps the newer of each, and
+    /// pushes the result back.
+    ///
+    /// Deliberately a button rather than something that happens quietly: this
+    /// talks to the network and rewrites the layout the next guests will be
+    /// printed on, and neither belongs in the middle of an evening nobody asked
+    /// for it in.
+    func syncLayouts() {
+        Task {
+            await layoutSync.sync(templates)
+            adoptOwnLayoutIfNeeded()
+            objectWillChange.send()
+        }
     }
 
     /// Reorders the operator's own layouts, one place at a time.

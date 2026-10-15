@@ -68,6 +68,19 @@ Copy them with AirDrop, an external disk, or over the network:
 rsync -av ~/Library/Application\ Support/Photobooth/ macmini.local:~/Library/Application\ Support/Photobooth/
 ```
 
+### Keeping the layouts in step afterwards
+
+Once both Macs have the settings folder, it stays a git repository on each of
+them, and **Print Layout › Sync layouts with my other Mac** keeps the designs
+together: it takes whatever the other Mac has designed and sends whatever this
+one has, merging layout by layout and keeping the newer of each. Branding
+artwork travels with them, add-only. A layout deleted on one Mac comes back from
+the other, so remove it on both.
+
+```bash
+cd ~/Library/Application\ Support && git clone <your private setup repo> Photobooth
+```
+
 After copying the settings, check **Admin › Printer** on the Mini: the SELPHY
 has to be added in System Settings there first, and the printer name is part of
 the settings you just copied.

@@ -762,6 +762,39 @@ stop being a fallback and become three wrong answers above the right one. They
 come back if every saved layout is removed. The same applies to the Quick tab and
 the rehearsal's rota.
 
+### Layouts on two Macs
+
+The booth's settings folder — settings, `templates.json` and the branding
+artwork — is a git repository, and **Sync layouts with my other Mac** on the
+Print Layout card is the whole interface to it: fetch what the other machine
+pushed, reconcile, push back. One button, because there is only one thing to
+want.
+
+**Reconciled by layout rather than by git.** Both machines keep every layout in
+one `templates.json`, so a design made on each is two edits to the same lines of
+the same file — a merge conflict, in a folder nobody is going to open a terminal
+in at an event. Instead the two lists are merged one layout at a time: matched
+by id, and the newer of the two kept, which is a question a layout can actually
+answer because it carries the moment it was last saved. The file is then written
+whole, so git only ever sees one side of a change and has nothing to conflict
+about. A second's grace in the comparison stops two machines that saved in the
+same moment from flipping back and forth for ever.
+
+What that costs: **a layout deleted on one Mac comes back if the other still has
+it**, because "deleted here" and "not made here yet" look identical in a list.
+Remove it on both to be rid of it. That is the right way round for a booth — a
+layout that reappears is a nuisance, a layout that vanishes the night before an
+event is not.
+
+Branding artwork travels with the layouts, and is **add-only**: a logo is
+referenced by file name from inside a layout, so a sync that deleted one would
+leave a layout pointing at nothing — and the reason the other machine sent it is
+that one of its layouts needs it.
+
+It is a button and not a background job on purpose. It talks to the network and
+it rewrites the layout the next guests will be printed on, and neither belongs
+in the middle of an evening that did not ask for it.
+
 **Colour or black and white** sits directly under the layouts, because it is
 the second question rather than a second list: the arrangement is chosen, and
 then how the photographs in it are finished. The conversion happens **once, to
