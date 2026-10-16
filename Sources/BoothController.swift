@@ -2130,9 +2130,11 @@ final class BoothController: ObservableObject {
         }
         guard !stragglers.isEmpty else { return }
         for rec in stragglers {
-            uploader.enqueue(eventID: rec.eventID, sessionID: rec.id)
+            uploader.enqueue(eventID: rec.eventID, sessionID: rec.id, thenDrain: false)
         }
         log.info("\(stragglers.count) finished session(s) had never been published — queued.")
+        // One drain for the lot, rather than one per session.
+        Task { await uploader.drain() }
     }
 
     /// Forgets a film that is not there, once, at launch.

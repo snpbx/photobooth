@@ -126,12 +126,14 @@ final class UploadService: ObservableObject {
         }
     }
 
-    func enqueue(eventID: String, sessionID: String) {
+    /// - Parameter thenDrain: false when the caller is adding several at once
+    ///   and will ask for one drain at the end, rather than one per session.
+    func enqueue(eventID: String, sessionID: String, thenDrain: Bool = true) {
         guard !queue.contains(where: { $0.eventID == eventID && $0.sessionID == sessionID }) else { return }
         queue.append(QueueItem(eventID: eventID, sessionID: sessionID))
         saveQueue()
         Log.shared.info("Queued for upload: \(eventID)/\(sessionID)")
-        Task { await drain() }
+        if thenDrain { Task { await drain() } }
     }
 
     func remove(eventID: String, sessionID: String) {
@@ -236,10 +238,16 @@ final class UploadService: ObservableObject {
         let due = queue.filter { $0.nextAttemptAt <= Date() }
             .sorted { $0.queuedAt > $1.queuedAt }
         guard !due.isEmpty else { return }
-        guard await checkReachability() else { return }
 
+        // Claimed before the first await, not after it. Every enqueue starts a
+        // drain of its own, so twenty arriving together — a launch that finds a
+        // backlog — would all pass the guard above while the first was still
+        // asking whether the site was reachable, and then publish the same
+        // session twenty times over.
         isDraining = true
         defer { isDraining = false; currentUpload = nil }
+
+        guard await checkReachability() else { return }
         var failures = 0
 
         for item in due {
