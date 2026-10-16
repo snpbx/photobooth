@@ -326,6 +326,7 @@ final class BoothController: ObservableObject {
 
         log.info("Photobooth launched — root \(storage.root.path)")
         healEmptyVideos()
+        reconcileUploadQueue()
 
         // dropFirst: the initial value is already applied above, and letting it
         // through would race a second camera connect against the one below.
@@ -823,6 +824,10 @@ final class BoothController: ObservableObject {
         updateLiveViewDesire()
 
         plannedShots = total
+        if videoRecorder.isRecording {
+            log.warn("Discarding a film left open before this session started.")
+            videoRecorder.cancel()
+        }
         videoWanted = settings.makeVideo
         videoLastFrame = .distantPast
         reserveSessionPage(rec)
@@ -951,7 +956,7 @@ final class BoothController: ObservableObject {
             currentSession = session
             storage.persist(session)
             if let colourOriginal {
-                storage.archiveColour(jpeg: colourOriginal, index: shot, in: session)
+                storage.archiveColour(jpeg: colourOriginal, named: photo.fileName, in: session)
             }
             camera?.didPersistLastCapture()
         } catch {
@@ -1415,7 +1420,95 @@ final class BoothController: ObservableObject {
     }
 
     /// Rebuilds print.jpg from the originals — used after a layout change or a failed render.
-    func rebuildPrint(for rec: SessionRecord) {
+    /// Lifts or pulls down the exposure of a finished session's photographs,
+    /// then rebuilds everything made from them.
+    ///
+    /// A booth's flash is set for the middle of the room and the group that
+    /// stands at the back comes out dark; there is a moment, while they are
+    /// still waiting for the strip, when that can be put right and a moment
+    /// afterwards when it cannot. So it is here, next to the print button, and
+    /// it is optional — the operator who presses Print straight away gets
+    /// exactly what they got before.
+    ///
+    /// Applied to the photographs themselves rather than to the sheet, so the
+    /// print, the page, the loop and the film all agree. Every adjustment is
+    /// made from the frame as it came off the camera, which is kept beside it,
+    /// so this can be dragged up and back down without the picture slowly
+    /// bleaching.
+    func applyBrightness(_ stops: Double, to rec: SessionRecord) {
+        let wanted = max(-1, min(1, stops))
+        guard abs(wanted - (rec.brightness ?? 0)) > 0.001 else { return }
+        guard !rec.photos.isEmpty else { return }
+
+        isAdjustingBrightness = true
+        let dir = storage.directory(for: rec)
+        let dpi = settings.dpi
+        // Each adjustment writes a new name, never over the last one: see
+        // `adjustedName`. The step only has to differ from the step before.
+        let step = brightnessStep(for: rec)
+        let jobs: [(photo: Photo, live: URL, asShot: URL, named: String)] = rec.photos.map {
+            ($0, $0.url(in: dir), storage.asShotURL(for: $0, in: rec),
+             abs(wanted) < 0.001 ? PhotoStorageService.originalName(for: $0)
+                                 : PhotoStorageService.adjustedName(for: $0, step: step))
+        }
+
+        Task { @MainActor in
+            let made = await Task.detached(priority: .userInitiated) { () -> [String: String] in
+                var landed: [String: String] = [:]
+                for job in jobs {
+                    // The frame as it came off the camera is written once and
+                    // read from then on, so adjustments never compound.
+                    if !FileManager.default.fileExists(atPath: job.asShot.path) {
+                        guard let current = try? Data(contentsOf: job.live) else { continue }
+                        try? current.write(to: job.asShot, options: .atomic)
+                    }
+                    guard let original = try? Data(contentsOf: job.asShot) else { continue }
+                    guard let out = LayoutRenderer.brightenedJPEG(original, stops: wanted, dpi: dpi)
+                    else { continue }
+                    let dest = dir.appendingPathComponent(job.named)
+                    guard (try? out.write(to: dest, options: .atomic)) != nil else { continue }
+                    // The frame this one replaces goes, now that it is neither
+                    // the original nor the current picture: left behind it
+                    // would be a second copy of the same photograph, and a
+                    // session rebuilt from the folder would count both.
+                    if dest != job.live {
+                        try? FileManager.default.removeItem(at: job.live)
+                    }
+                    landed[job.photo.fileName] = job.named
+                }
+                return landed
+            }.value
+
+            var s = rec
+            s.brightness = wanted
+            for i in s.photos.indices {
+                if let name = made[s.photos[i].fileName] { s.photos[i].fileName = name }
+            }
+            let ok = made.count == rec.photos.count
+            self.storage.persist(s)
+            if self.currentSession?.id == s.id { self.currentSession = s }
+            self.rebuildPrint(for: s, thenRepublish: true)
+            self.isAdjustingBrightness = false
+            if !ok { self.show(.warning, "Some photographs could not be adjusted.") }
+            self.log.info("Exposure for \(s.id) set to \(String(format: "%+.2f", wanted)) stop(s)")
+        }
+    }
+
+    /// A number that changes with every adjustment, so the name does too.
+    private func brightnessStep(for rec: SessionRecord) -> Int {
+        let current = rec.photos.first?.fileName ?? ""
+        if let r = current.range(of: "-ev([0-9]+)", options: .regularExpression) {
+            let digits = current[r].dropFirst(3)
+            return (Int(digits) ?? 0) + 1
+        }
+        return 1
+    }
+
+    /// True while the photographs are being rewritten, so the console can say
+    /// so rather than looking as if nothing happened.
+    @Published private(set) var isAdjustingBrightness = false
+
+    func rebuildPrint(for rec: SessionRecord, thenRepublish: Bool = false) {
         let dir = storage.directory(for: rec)
         let urls = rec.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
         let layout = rec.layout
@@ -1432,13 +1525,47 @@ final class BoothController: ObservableObject {
             }.value
             switch result {
             case .success(let data):
-                var s = rec
+                var s = self.storage.sessions.first { $0.id == rec.id } ?? rec
                 s.printFileName = try? self.storage.savePrint(data, in: rec)
                 self.storage.persist(s)
+                if self.currentSession?.id == s.id {
+                    self.currentSession = s
+                    self.sessionPrintImage = NSImage(data: data)
+                }
+                if thenRepublish {
+                    // The loop is made of the same photographs, so it is wrong
+                    // now too — and the page is made of both.
+                    await self.rebuildGIF(for: s)
+                    if let fresh = self.storage.sessions.first(where: { $0.id == s.id }) {
+                        self.queueUpload(fresh)
+                    }
+                }
                 self.show(.info, "Print image rebuilt for \(rec.id)")
             case .failure(let e):
                 self.show(.error, e.localizedDescription)
             }
+        }
+    }
+
+    /// Rebuilds the take-away loop from whatever the photographs are now.
+    private func rebuildGIF(for rec: SessionRecord) async {
+        guard GIFRenderer.enabled, settings.makeGIF else { return }
+        let dir = storage.directory(for: rec)
+        let urls = rec.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
+        let layout = rec.layout
+        let snapshot = settings
+        let sheet = activeTemplate
+        let made: Data? = await Task.detached(priority: .userInitiated) {
+            try? GIFRenderer.renderSlideshow(stills: urls, layout: layout,
+                                             settings: snapshot, template: sheet)
+        }.value
+        guard let made else { return }
+        var s = rec
+        s.gifFileName = try? storage.saveGIF(made, in: rec)
+        storage.persist(s)
+        if currentSession?.id == s.id {
+            currentSession = s
+            sessionGIF = NSImage(data: made)
         }
     }
 
@@ -1986,6 +2113,28 @@ final class BoothController: ObservableObject {
         log.info("Published \(session.id) to Cloudinary — \(uploaded) file(s)")
     }
 
+    /// Puts back anything that finished but never reached the gallery.
+    ///
+    /// A session joins the queue the moment it finishes, and the queue is on
+    /// disk — but only if the booth got that far. One that was finished with
+    /// uploading switched off, or whose booth was quit between saving the
+    /// record and queueing it, is simply never mentioned again: the photographs
+    /// are on the disk, the code is on a strip in somebody's pocket, and
+    /// nothing is ever going to publish them. Checked once at launch, which is
+    /// the one moment the booth knows everything that happened before it.
+    private func reconcileUploadQueue() {
+        guard settings.uploadEnabled else { return }
+        let stragglers = storage.sessions.filter {
+            $0.finishedAt != nil && !$0.publicToken.isEmpty
+                && $0.uploadState != .uploaded && !$0.photos.isEmpty
+        }
+        guard !stragglers.isEmpty else { return }
+        for rec in stragglers {
+            uploader.enqueue(eventID: rec.eventID, sessionID: rec.id)
+        }
+        log.info("\(stragglers.count) finished session(s) had never been published — queued.")
+    }
+
     /// Forgets a film that is not there, once, at launch.
     ///
     /// A session recorded as having a clip that is missing or empty could never
@@ -2368,9 +2517,15 @@ final class BoothController: ObservableObject {
     /// is what says how big the clip should be, and a booth whose camera is
     /// warming up would otherwise fix the shape from a guess.
     private func recordVideoFrame(_ img: NSImage) {
-        guard videoWanted, state.isSessionActive else { return }
+        guard videoWanted, state.isSessionActive, let rec = currentSession else { return }
+        // A film still open from a session that ended badly would go on taking
+        // frames — this group's, into the last group's file. That is how a
+        // session ends up with somebody else's evening in it.
+        if videoRecorder.isRecording, videoRecorder.owner != rec.id {
+            log.warn("A film left open by an earlier session was still recording — discarded.")
+            videoRecorder.cancel()
+        }
         if !videoRecorder.isRecording {
-            guard let rec = currentSession else { return }
             let long = CGFloat(max(360, min(settings.videoLongEdge, 1080)))
             let w = img.size.width, h = img.size.height
             guard w > 0, h > 0 else { return }
@@ -2378,7 +2533,8 @@ final class BoothController: ObservableObject {
             let size = CGSize(width: w * scale, height: h * scale)
             let url = storage.directory(for: rec).appendingPathComponent(SessionVideoRecorder.fileName)
             do {
-                try videoRecorder.start(url: url, size: size, fps: settings.liveViewFPS)
+                try videoRecorder.start(url: url, size: size,
+                                        fps: settings.liveViewFPS, owner: rec.id)
                 log.info("Recording the session film at \(Int(size.width))×\(Int(size.height))")
             } catch {
                 videoWanted = false
@@ -2396,7 +2552,8 @@ final class BoothController: ObservableObject {
 
     /// The shutter and the photograph it took, held the way the guests saw them.
     private func recordVideoShot(_ jpeg: Data) {
-        guard videoWanted, videoRecorder.isRecording else { return }
+        guard videoWanted, videoRecorder.isRecording,
+              videoRecorder.owner == currentSession?.id else { return }
         let size = CGSize(width: 1280, height: 720)
         if let flash = SessionVideoRecorder.flash(size: size) {
             videoRecorder.hold(flash, seconds: 0.12)
@@ -2414,6 +2571,13 @@ final class BoothController: ObservableObject {
     /// Closes the film: a branded card on the end, then the file.
     private func finishVideo(for session: inout SessionRecord) async {
         guard videoWanted, videoRecorder.isRecording else { return }
+        // Only ever this session's own film. Finishing somebody else's would
+        // write their recording into this session's record.
+        guard videoRecorder.owner == session.id else {
+            log.warn("The open film belongs to another session — left alone.")
+            videoWanted = false
+            return
+        }
         // Before anything is awaited. Closing the file takes a moment, the live
         // view goes on delivering frames while it does, and a frame arriving
         // with this still set is all it takes to start a second film writing

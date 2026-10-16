@@ -596,6 +596,8 @@ private struct SessionCard: View {
                     .disabled(c.currentSession?.photos.isEmpty ?? true)
             }
 
+            BrightnessRow(c: c)
+
             HStack(spacing: 8) {
                 Button("Print Session") { c.printCurrentSession() }
                     .buttonStyle(QuietButtonStyle())
@@ -1352,6 +1354,68 @@ private struct CopiesPicker: View {
             }
 
         }
+    }
+}
+
+/// Exposure for the session on screen, directly above the print button.
+///
+/// A booth's flash is set for the middle of the room, and the group that stands
+/// at the back comes out dark. There is a moment while they wait for the strip
+/// when that can be put right and a moment afterwards when it cannot — so it
+/// lives here, where the print button is, and nowhere else.
+///
+/// It does nothing until it is moved, and nothing while it is being moved: the
+/// photographs are rewritten when the slider is let go, not on every tick of
+/// the drag. Pressing Print straight away gives exactly what it always gave.
+private struct BrightnessRow: View {
+    @ObservedObject var c: BoothController
+    @State private var stops: Double = 0
+    @State private var editing = false
+
+    var body: some View {
+        let session = c.currentSession
+        let applied = session?.brightness ?? 0
+        return Group {
+            if let session, !session.photos.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text("Brightness").font(.system(size: 12, weight: .medium))
+                        Spacer(minLength: 8)
+                        Text(label(stops))
+                            .font(.system(size: 11)).monospacedDigit()
+                            .foregroundStyle(abs(stops) < 0.01 ? Palette.textDim : Palette.text)
+                        if c.isAdjustingBrightness { ProgressView().controlSize(.small) }
+                    }
+                    HStack(spacing: 8) {
+                        Slider(value: $stops, in: -1...1, step: 0.05) { changing in
+                            editing = changing
+                            // Let go: rewrite the photographs, the sheet, the
+                            // loop, and send the page up again.
+                            if !changing { c.applyBrightness(stops, to: session) }
+                        }
+                        .disabled(c.isAdjustingBrightness)
+                        Button("Reset") {
+                            stops = 0
+                            c.applyBrightness(0, to: session)
+                        }
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(abs(applied) < 0.01 || c.isAdjustingBrightness)
+                    }
+                    Text("Optional — the print, the page and the loop are all rebuilt from the adjusted photographs.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                // Follow the session on screen, but never yank the slider out
+                // from under a thumb that is mid-drag.
+                .onChange(of: session.id) { _, _ in if !editing { stops = applied } }
+                .onAppear { if !editing { stops = applied } }
+            }
+        }
+    }
+
+    private func label(_ v: Double) -> String {
+        abs(v) < 0.01 ? "As shot" : String(format: "%+.2f stops", v)
     }
 }
 

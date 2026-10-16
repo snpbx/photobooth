@@ -56,7 +56,16 @@ final class SessionVideoRecorder: @unchecked Sendable {
     /// second film here would point it at the path the first is still finishing
     /// into, leaving an empty file where the session's film should be.
     private var finishing = false
+    private var ownerID: String?
     private(set) var url: URL?
+
+    /// Which session this film belongs to.
+    ///
+    /// A recorder outlives any one session, and a film left open by a session
+    /// that ended badly used to go on taking frames — from the next group, into
+    /// the previous group's file. The owner is how the booth can tell that the
+    /// thing still recording is not its own.
+    var owner: String? { queue.sync { ownerID } }
 
     var isRecording: Bool { queue.sync { writer != nil || finishing } }
 
@@ -66,7 +75,7 @@ final class SessionVideoRecorder: @unchecked Sendable {
     ///   - size: the clip's own frame. Taken from the camera's first preview so
     ///     nothing is stretched, rounded to even numbers because H.264 cannot
     ///     encode an odd dimension.
-    func start(url target: URL, size wanted: CGSize, fps wantedFPS: Int) throws {
+    func start(url target: URL, size wanted: CGSize, fps wantedFPS: Int, owner: String) throws {
         try queue.sync {
             guard !finishing else {
                 throw VideoError.writerFailed("the previous film is still being written")
@@ -115,6 +124,7 @@ final class SessionVideoRecorder: @unchecked Sendable {
             self.lastPresented = .zero
             self.frameCount = 0
             self.url = target
+            self.ownerID = owner
         }
     }
 
@@ -211,6 +221,7 @@ final class SessionVideoRecorder: @unchecked Sendable {
             queue.sync {
                 self.writer = nil; self.input = nil; self.adaptor = nil
                 self.startedAt = nil; self.frameCount = 0; self.finishing = false
+                self.ownerID = nil
             }
         }
         guard let writer, let input, let target else { throw VideoError.noFrames }
@@ -246,6 +257,7 @@ final class SessionVideoRecorder: @unchecked Sendable {
             writer?.cancelWriting()
             if let url { try? FileManager.default.removeItem(at: url) }
             writer = nil; input = nil; adaptor = nil; startedAt = nil; frameCount = 0
+            ownerID = nil
         }
     }
 

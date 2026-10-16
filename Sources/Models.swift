@@ -145,6 +145,13 @@ struct SessionRecord: Codable, Identifiable, Hashable {
     var gifFileName: String?
     /// Set once the session's film has been written into the session folder.
     var videoFileName: String?
+    /// How much exposure the operator added to this session's photographs, in
+    /// stops. Nil for every session nobody touched, which is most of them.
+    ///
+    /// Optional rather than a defaulted `Double`: a synthesised decoder treats
+    /// a missing key as an error even when the property has a default, and
+    /// every record already on disk was written without this one.
+    var brightness: Double?
     /// What the sheet was called when this session was photographed. Optional
     /// because sessions predate it — and recorded at the time on purpose: the
     /// event's layout can be changed afterwards, and a report that renamed

@@ -416,20 +416,54 @@ gives up on a plain 200 — so the local server answers `206 Partial Content`.
 A session that is cancelled or fails throws its recording away rather than
 leaving half a file behind.
 
+## Brightness, before the print goes out
+
+A booth's flash is set for the middle of the room, and the group that stands at
+the back comes out dark. There is a moment while they wait for the strip when
+that can be put right and a moment afterwards when it cannot — so **Brightness**
+sits directly above **Print Session** on the Control tab, and nowhere else.
+
+It does nothing until it is moved, and nothing while it is being moved: the
+photographs are rewritten when the slider is let go, not on every tick of a
+drag. An operator who presses Print straight away gets exactly what they always
+got.
+
+Measured in **stops of exposure**, not in "brightness". Adding a constant to
+every pixel washes the blacks out to grey and leaves the picture flat; a stop is
+what the camera itself would have done — the whole scene lifted, with its
+contrast intact. One stop either way is the range offered, which is about as
+wrong as a booth's flash gets.
+
+Applied to the photographs themselves rather than to the sheet, so the print,
+the page, the loop and the film all agree, and the session is published again
+afterwards. Every adjustment is made from the frame as it came off the camera —
+kept beside it as `photo-NN.asshot.jpg` — so the slider can go up and back down
+without the picture slowly bleaching. Retaken frames are adjusted with the rest,
+since by then they are simply the session's photographs.
+
 ## The GIF
 
-Every session also produces `session.gif`: **each photograph in turn, filling a
-page in the sheet's own branding** — the same background, border, footer and
-logos as the print, so the loop plainly came from the same booth as the strip in
-the guest's hand. One frame per photograph, held 0.8s by default, looping for
-ever.
+Every session also produces `session.gif`: **each photograph in turn, whole, on
+the sheet's own background with the sheet's own artwork** — so the loop plainly
+came from the same booth as the strip in the guest's hand. One frame per
+photograph, held 0.8s by default, looping for ever.
 
-A whole page rather than the printed strip. The print is the same picture twice,
-or six small ones; at the size a GIF is watched on a phone that leaves every face
-a thumbnail. `LayoutRenderer.compositeFullPage` collapses the sheet's photograph
-slots into their own union and gives one photograph all of it, keeping everything
-else exactly where the sheet puts it — so a logo placed clear of the pictures is
-still clear of them.
+**Landscape, and nothing cropped.** The frame used to be the sheet's own 4×6,
+composed like a page — which meant a 3:2 photograph was either cut down to a
+third of its width or floated in a sea of background, and what got cut was
+whoever stood at the edge. The loop has no paper to match, so it takes the
+camera's shape instead: `LayoutRenderer.compositeLandscape` fits the whole
+picture into a 6×4 frame, and the sheet's artwork is laid along a band at the
+foot of it.
+
+The artwork keeps its proportions there. Overlay rectangles are fractions of a
+4×6 sheet, so read against a 6×4 one they would stretch a logo half as wide
+again; each is drawn to fit inside the space it was given rather than filling
+it, and stays at the point across the page where the sheet has it.
+
+A whole photograph rather than the printed strip. The print is the same picture
+twice, or six small ones; at the size a GIF is watched on a phone that leaves
+every face a thumbnail.
 
 It is built from the photographs, not from live view. Stills are what a session
 always has, whatever the camera was doing between shots and whether or not live
@@ -930,8 +964,29 @@ Two things the editor does deliberately:
 
 - Each JPEG is written to disk before anything else in the workflow continues,
   and the camera card copy is only deleted after that write returns.
-- A retake archives the previous frame as `photo-NN.retake-<epoch>.jpg` rather
-  than deleting it.
+- **A retake is saved under its own name** — `photo-NN-take2.jpg`, then
+  `-take3` — and the frame it supersedes is archived as
+  `photo-NN.retake-<epoch>.jpg` rather than deleted. The new name is the point:
+  the photographs are delivered from a CDN keyed by file name, and whether a
+  second upload replaces what is already published under a name depends on
+  settings in a Cloudinary account rather than on anything the booth can see.
+  A name that has never been published cannot serve the frame the guests asked
+  to do again.
+- **Finished sessions that never reached the gallery are queued at launch.** A
+  session joins the upload queue when it finishes — but only if the booth got
+  that far, and one finished with uploading switched off, or whose booth was
+  quit between saving the record and queueing it, would otherwise never be
+  mentioned again while a code for it sat in somebody's pocket.
+- **Each film belongs to a session.** A recorder outlives any one session, and a
+  film left open by a session that ended badly used to go on taking frames —
+  the next group's, into the previous group's file. Recording now carries the id
+  of the session that started it: a film that is not this session's is discarded
+  rather than written to, and a session that starts with one still open throws
+  it away first.
+- A clip that finishes with nothing in it is deleted rather than recorded, and
+  an upload skips any file with no bytes. An empty file was refused by
+  Cloudinary with a 400, and the refusal used to take the whole session with it
+  — photographs, print, loop and page — retrying every quarter of an hour.
 - A session folder missing `session.json` is rebuilt from the files on disk on
   next launch, then the metadata is written back so it is rebuilt only once.
 - Reprints of the same session inside 8 seconds are suppressed unless explicitly

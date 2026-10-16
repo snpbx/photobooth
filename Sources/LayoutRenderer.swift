@@ -257,6 +257,118 @@ enum LayoutRenderer {
         }
     }
 
+    /// The take-away loop's own frame: the camera's picture whole, on the
+    /// sheet's background, with the sheet's artwork under it.
+    ///
+    /// **Landscape, and nothing cropped.** The print is a portrait strip, so a
+    /// 3:2 frame placed in it has a third of its width cut away — which is the
+    /// shot a guest is most likely to send on, with whoever was standing at the
+    /// edge of it removed. The loop has no paper to match, so it takes the
+    /// camera's own shape and fits the picture inside rather than filling it.
+    ///
+    /// The artwork keeps its proportions. Overlay rectangles are expressed as
+    /// fractions of a 4×6 sheet; read against a 6×4 one they would stretch a
+    /// logo half as wide again, so each is drawn to fit inside the space it was
+    /// given instead of filling it, along a band at the foot of the frame.
+    static func compositeLandscape(image: CGImage?,
+                                   canvas: CGSize,
+                                   settings: AppSettings,
+                                   template: PrintTemplate?) throws -> CGImage {
+        let marks = loopMarks(of: template)
+        let band  = marks.isEmpty ? 0 : canvas.height * Self.artworkBand
+        let inset = canvas.width * Self.frameInset
+        let frame = CGRect(x: inset, y: inset,
+                           width: canvas.width - inset * 2,
+                           height: canvas.height - band - inset * 2)
+
+        var look = settings
+        if let t = template { look.backgroundHex = t.backgroundHex }
+        look.footerEnabled = settings.footerEnabled && marks.isEmpty
+
+        return try draw(canvas: canvas, settings: look) { ctx in
+            if let image, frame.width > 0, frame.height > 0 {
+                drawPhoto(ctx, image: image, in: frame, canvasH: canvas.height, mode: .fit)
+            }
+            // The artwork, along the foot, each piece at its own aspect ratio.
+            if !marks.isEmpty {
+                let mid = canvas.height - band / 2
+                let room = canvas.width - inset * 2
+                var pieces: [(img: CGImage, size: CGSize, centre: CGFloat)] = []
+                for o in marks {
+                    guard let art = BrandingAssets.loadCGImage(o.file) else { continue }
+                    let img = o.inverted ? (inverted(art) ?? art) : art
+                    guard img.width > 0, img.height > 0 else { continue }
+                    let h = band * 0.62
+                    let w = CGFloat(img.width) * (h / CGFloat(img.height))
+                    pieces.append((img, CGSize(width: w, height: h),
+                                   (o.rect.x + o.rect.w / 2) * canvas.width))
+                }
+                let gap = inset
+                let total = pieces.reduce(0) { $0 + $1.size.width }
+                    + gap * CGFloat(max(0, pieces.count - 1))
+                if pieces.count == 1 {
+                    // The only thing down there belongs in the middle.
+                    pieces[0].centre = canvas.width / 2
+                } else if total > room {
+                    // More artwork than the band can hold at its own positions:
+                    // shrink it all by the same amount and space it evenly, so
+                    // nothing overlaps and nothing is singled out.
+                    let shrink = room / total
+                    var x = inset
+                    for i in pieces.indices {
+                        pieces[i].size = CGSize(width: pieces[i].size.width * shrink,
+                                                height: pieces[i].size.height * shrink)
+                        pieces[i].centre = x + pieces[i].size.width / 2
+                        x += pieces[i].size.width + gap * shrink
+                    }
+                }
+                for p in pieces {
+                    let x = min(max(inset, p.centre - p.size.width / 2),
+                                canvas.width - inset - p.size.width)
+                    drawImage(ctx, p.img,
+                              in: CGRect(x: x, y: mid - p.size.height / 2,
+                                         width: p.size.width, height: p.size.height),
+                              canvasH: canvas.height)
+                }
+            }
+            if look.footerEnabled {
+                for region in footerRegions(for: .fourFullPage, canvas: canvas, settings: look) {
+                    drawFooter(ctx, canvas: canvas, region: region, settings: look, qrPayload: nil)
+                }
+            }
+        }
+    }
+
+    /// The artwork a single loop frame should carry.
+    ///
+    /// A sheet with a cutting line down it is two strips that will be torn
+    /// apart and handed to two guests, so its artwork is placed once per half.
+    /// The loop is one frame and is never cut, so it takes one half's worth —
+    /// otherwise the logo appears twice side by side, which reads as a mistake
+    /// rather than as a strip for each of them.
+    static func loopMarks(of template: PrintTemplate?) -> [TemplateOverlay] {
+        let all = (template?.overlays ?? []).filter { !$0.file.isEmpty }
+        guard let cut = template?.cutGuide, cut.orientation == .vertical else { return all }
+        let half = all.filter { $0.rect.x + $0.rect.w / 2 < cut.position }
+        return half.isEmpty ? all : half
+    }
+
+    /// How much of the loop's frame the sheet's artwork is given, and how far
+    /// the picture sits from the edge. Shared with whoever works out how big
+    /// the frame should be in the first place, so the picture lands exactly
+    /// across it rather than nearly.
+    static let artworkBand: CGFloat = 0.16
+    static let frameInset: CGFloat = 0.015
+
+    /// Draws an image into a top-left rectangle without scaling it to fit the
+    /// box's shape — the box is where it goes, the image keeps its own.
+    private static func drawImage(_ ctx: CGContext, _ img: CGImage,
+                                  in topLeftRect: CGRect, canvasH: CGFloat) {
+        ctx.saveGState()
+        ctx.draw(img, in: flip(topLeftRect, canvasH: canvasH))
+        ctx.restoreGState()
+    }
+
     /// Where a code goes on a sheet whose layout never placed one.
     ///
     /// Under the photographs, in whatever space is left — and **one per strip**
@@ -886,6 +998,25 @@ enum LayoutRenderer {
               let cg = CGImageSourceCreateImageAtIndex(src, 0, nil),
               let filter = CIFilter(name: "CIPhotoEffectMono") else { return nil }
         filter.setValue(CIImage(cgImage: cg), forKey: kCIInputImageKey)
+        guard let output = filter.outputImage,
+              let made = ciContext.createCGImage(output, from: output.extent) else { return nil }
+        return jpegData(from: made, dpi: dpi)
+    }
+
+    /// The same photograph, lifted or pulled down by `stops` of exposure.
+    ///
+    /// Exposure rather than "brightness": adding a constant to every pixel
+    /// washes the blacks out to grey and leaves the picture flat, while a stop
+    /// is what the camera itself would have done — the whole scene, lighter,
+    /// with its contrast intact. One stop either way is as far as this goes,
+    /// which is about the range a booth's flash gets wrong.
+    static func brightenedJPEG(_ data: Data, stops: Double, dpi: Int) -> Data? {
+        guard abs(stops) > 0.001 else { return data }
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil),
+              let filter = CIFilter(name: "CIExposureAdjust") else { return nil }
+        filter.setValue(CIImage(cgImage: cg), forKey: kCIInputImageKey)
+        filter.setValue(max(-2, min(2, stops)), forKey: kCIInputEVKey)
         guard let output = filter.outputImage,
               let made = ciContext.createCGImage(output, from: output.extent) else { return nil }
         return jpegData(from: made, dpi: dpi)

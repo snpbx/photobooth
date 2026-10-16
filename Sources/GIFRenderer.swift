@@ -79,9 +79,39 @@ enum GIFRenderer {
         return g
     }
 
-    /// The GIF is the print's shape — 4×6 — because it is the print's layout.
-    static func canvasSize(settings: AppSettings) -> CGSize {
-        composeSettings(settings).pixelSize
+    /// The loop's shape: **landscape**, because it carries one whole photograph
+    /// rather than a sheet of them.
+    ///
+    /// It used to be the sheet's own 4×6, which made sense while the frame was
+    /// composed like a page — but a 3:2 photograph in a portrait page is either
+    /// cropped to a third of its width or floated in a sea of background. On a
+    /// 6×4 the camera's picture very nearly fills the frame.
+    static func canvasSize(settings: AppSettings,
+                           photoAspect: CGFloat = 1.5,
+                           hasArtwork: Bool = false) -> CGSize {
+        let w = CGFloat(clampedLongEdge(settings))
+        // Never taller than wide: a portrait photograph is letterboxed rather
+        // than turning the loop on its end.
+        let aspect = max(1, photoAspect)
+        let inset = w * LayoutRenderer.frameInset
+        let picture = w - inset * 2
+        let height = (picture / aspect + inset * 2)
+            / (hasArtwork ? (1 - LayoutRenderer.artworkBand) : 1)
+        return CGSize(width: w.rounded(), height: height.rounded())
+    }
+
+    /// The camera's own shape, from the first photograph that will go in.
+    ///
+    /// Taken from the pictures rather than assumed: a 6D gives 3:2, a webcam
+    /// 16:9, and a frame built for the wrong one puts the guests in a letterbox
+    /// of brand colour for the whole loop.
+    private static func aspect(of stills: [URL]) -> CGFloat {
+        for url in stills {
+            if let img = LayoutRenderer.loadOrientedImage(at: url), img.height > 0 {
+                return CGFloat(img.width) / CGFloat(img.height)
+            }
+        }
+        return 1.5
     }
 
     // MARK: - Rendering
@@ -103,7 +133,10 @@ enum GIFRenderer {
         guard !stills.isEmpty else { throw GIFError.noPhotos }
 
         let g = composeSettings(settings)
-        let canvas = g.pixelSize
+        let marked = !(template?.overlays.filter { !$0.file.isEmpty }.isEmpty ?? true)
+        let canvas = canvasSize(settings: settings,
+                                photoAspect: aspect(of: stills),
+                                hasArtwork: marked)
         let hold = min(max(settings.gifSeconds, minSeconds), maxSeconds)
         // GIF stores delay on a hundredth-of-a-second grid; rounding here rather
         // than letting the encoder do it keeps the loop running at the length
@@ -134,9 +167,8 @@ enum GIFRenderer {
         var written = 0
         for url in stills {
             guard let photo = LayoutRenderer.loadOrientedImage(at: url) else { continue }
-            let page = try LayoutRenderer.compositeFullPage(image: photo, layout: layout,
-                                                            canvas: canvas, settings: g,
-                                                            template: template)
+            let page = try LayoutRenderer.compositeLandscape(image: photo, canvas: canvas,
+                                                             settings: g, template: template)
             CGImageDestinationAddImage(dest, page, frameProps)
             written += 1
         }

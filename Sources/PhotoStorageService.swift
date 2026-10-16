@@ -213,8 +213,9 @@ final class PhotoStorageService: ObservableObject {
     }
 
     /// Writes the JPEG immediately; nothing else in the workflow runs until this returns.
-    func savePhoto(jpeg: Data, index: Int, in session: SessionRecord) throws -> Photo {
-        let name = String(format: "photo-%02d.jpg", index)
+    func savePhoto(jpeg: Data, index: Int, in session: SessionRecord,
+                   named: String? = nil) throws -> Photo {
+        let name = named ?? String(format: "photo-%02d.jpg", index)
         let dest = directory(for: session).appendingPathComponent(name)
         do {
             try jpeg.write(to: dest, options: .atomic)
@@ -238,8 +239,8 @@ final class PhotoStorageService: ObservableObject {
     /// output, page and upload works from the session's own list of
     /// photographs — so they simply sit in the folder for the operator who is
     /// asked for them the next day.
-    func archiveColour(jpeg: Data, index: Int, in session: SessionRecord) {
-        let name = String(format: "photo-%02d.colour.jpg", index)
+    func archiveColour(jpeg: Data, named photo: String, in session: SessionRecord) {
+        let name = (photo as NSString).deletingPathExtension + ".colour.jpg"
         let dest = directory(for: session).appendingPathComponent(name)
         do {
             try jpeg.write(to: dest, options: .atomic)
@@ -248,11 +249,34 @@ final class PhotoStorageService: ObservableObject {
         }
     }
 
+    /// The photograph as it was saved, before any brightening.
+    ///
+    /// Written once, the first time a session is adjusted, and read every time
+    /// after: every adjustment is made from the original rather than on top of
+    /// the last one, so dragging a slider up and back down lands exactly where
+    /// it started instead of somewhere paler.
+    func asShotURL(for photo: Photo, in session: SessionRecord) -> URL {
+        let dir = directory(for: session)
+        let stem = (photo.fileName as NSString).deletingPathExtension
+        let base = stem.range(of: "-ev[0-9]+$", options: .regularExpression)
+            .map { String(stem[stem.startIndex..<$0.lowerBound]) } ?? stem
+        return dir.appendingPathComponent(base + ".asshot.jpg")
+    }
+
     /// Replaces the photo at `index` with a fresh capture.
     ///
-    /// The superseded frame is renamed rather than deleted — a guest asking for a
-    /// retake is not a reason to destroy a photograph the client might still want,
-    /// and the operator can always fish it back out of the session folder.
+    /// **Under a new name.** The obvious thing is to write over the old file,
+    /// and it is what this used to do — but the photographs are delivered from a
+    /// CDN keyed by file name, and a name that has already been published is a
+    /// name that already has a picture behind it. Whether the second upload
+    /// replaces the first depends on settings in somebody's Cloudinary account,
+    /// and when it does not, the guests' page keeps showing the frame they asked
+    /// to do again. A name that has never been published cannot have that
+    /// problem.
+    ///
+    /// The superseded frame is kept, renamed out of the way — a guest asking for
+    /// a retake is not a reason to destroy a photograph the client might still
+    /// want.
     func replacePhoto(jpeg: Data, index: Int, in session: SessionRecord) throws -> Photo {
         let dir = directory(for: session)
         if let existing = session.photos.first(where: { $0.index == index }) {
@@ -265,7 +289,48 @@ final class PhotoStorageService: ObservableObject {
                 Log.shared.info("Retake — \(existing.fileName) kept as \(archived.lastPathComponent)")
             }
         }
-        return try savePhoto(jpeg: jpeg, index: index, in: session)
+        return try savePhoto(jpeg: jpeg, index: index, in: session,
+                             named: Self.retakeName(index: index, in: dir))
+    }
+
+    /// The frame's own name with any adjustment suffix taken off — what it is
+    /// called when the exposure is put back to as-shot.
+    static func originalName(for photo: Photo) -> String {
+        let stem = (photo.fileName as NSString).deletingPathExtension
+        let base = stem.range(of: "-ev[0-9]+$", options: .regularExpression)
+            .map { String(stem[stem.startIndex..<$0.lowerBound]) } ?? stem
+        return base + ".jpg"
+    }
+
+    /// The name an adjusted frame is written under.
+    ///
+    /// For the same reason a retake gets one: the photographs are delivered
+    /// from a CDN keyed by file name, and a name that has already been
+    /// published may go on serving the picture it was first given. An exposure
+    /// the operator can see on the print but not on the guests' page would be
+    /// worse than no exposure control at all.
+    ///
+    /// The as-shot original keeps its own name throughout, so the chain never
+    /// grows: every adjustment is `name-ev<n>` derived from the same source.
+    static func adjustedName(for photo: Photo, step: Int) -> String {
+        let stem = (photo.fileName as NSString).deletingPathExtension
+        let base = stem.range(of: "-ev[0-9]+$", options: .regularExpression)
+            .map { String(stem[stem.startIndex..<$0.lowerBound]) } ?? stem
+        return "\(base)-ev\(step).jpg"
+    }
+
+    /// `photo-01-take2.jpg`, then `-take3`, and so on: the first name that is
+    /// not already taken in the folder, so every take has one of its own.
+    static func retakeName(index: Int, in dir: URL) -> String {
+        var take = 2
+        while take < 40 {
+            let name = String(format: "photo-%02d-take%d.jpg", index, take)
+            if !FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path) {
+                return name
+            }
+            take += 1
+        }
+        return String(format: "photo-%02d-take%d.jpg", index, Int(Date().timeIntervalSince1970))
     }
 
     func savePrint(_ jpeg: Data, in session: SessionRecord) throws -> String {
@@ -382,6 +447,7 @@ final class PhotoStorageService: ObservableObject {
         let photoFiles = files.filter {
             $0.hasPrefix("photo-") && $0.hasSuffix(".jpg")
                 && !$0.contains(".retake-") && !$0.contains(".colour.")
+                && !$0.contains(".asshot.")
         }.sorted()
         guard !photoFiles.isEmpty else { return nil }
 
