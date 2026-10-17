@@ -346,6 +346,30 @@ final class BoothController: ObservableObject {
             }
             .store(in: &cancels)
 
+        // Republish what the stores publish.
+        //
+        // Every card in the console observes this controller and then reads
+        // through it — `c.templates.templates`, `c.storage.sessions`,
+        // `c.printer.state`. Those live on their own objects, and SwiftUI was
+        // never told about them: a layout saved in the editor did not appear on
+        // the Print Layout card, a renamed one kept its old name, a finished
+        // session did not join the gallery, and a printer that came back to
+        // life still read as idle — until something unrelated happened to
+        // redraw the view and everything corrected itself at once. Which is
+        // exactly what "it is full of bugs" looks like from the outside.
+        //
+        // A handful of methods used to paper over this by calling
+        // `objectWillChange.send()` by hand; the ones nobody thought of are
+        // the bugs.
+        for publisher in [templates.objectWillChange,
+                          storage.objectWillChange,
+                          printer.objectWillChange,
+                          uploader.objectWillChange] {
+            publisher
+                .sink { [weak self] _ in self?.objectWillChange.send() }
+                .store(in: &cancels)
+        }
+
         // A sheet is only counted once it has actually come out. CUPS is the
         // only thing that knows: the session is marked queued when `lp` takes
         // it, and stays that way for ever unless somebody watches the job.
@@ -2127,6 +2151,7 @@ final class BoothController: ObservableObject {
         let stragglers = storage.sessions.filter {
             $0.finishedAt != nil && !$0.publicToken.isEmpty
                 && $0.uploadState != .uploaded && !$0.photos.isEmpty
+                && hasSomethingToUpload($0)
         }
         guard !stragglers.isEmpty else { return }
         for rec in stragglers {
@@ -2135,6 +2160,27 @@ final class BoothController: ObservableObject {
         log.info("\(stragglers.count) finished session(s) had never been published — queued.")
         // One drain for the lot, rather than one per session.
         Task { await uploader.drain() }
+    }
+
+    /// Whether the current settings would send anything at all for a session.
+    ///
+    /// A session abandoned after one shot has no sheet and no loop, and with
+    /// the originals switched off there is nothing in it to publish. Queueing
+    /// it anyway means it is queued and dropped again on every launch, for
+    /// ever, which fills the log with warnings about sessions nobody is
+    /// waiting on.
+    private func hasSomethingToUpload(_ rec: SessionRecord) -> Bool {
+        let dir = storage.directory(for: rec)
+        func there(_ name: String?) -> Bool {
+            guard let name else { return false }
+            return hasBytes(dir.appendingPathComponent(name))
+        }
+        if settings.uploadPrints, there(rec.printFileName) { return true }
+        if settings.uploadGIFs, GIFRenderer.enabled, there(rec.gifFileName) { return true }
+        if settings.uploadVideos, there(rec.videoFileName) { return true }
+        if settings.uploadOriginals,
+           rec.photos.contains(where: { there($0.fileName) }) { return true }
+        return false
     }
 
     /// Forgets a film that is not there, once, at launch.
