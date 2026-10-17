@@ -927,17 +927,19 @@ final class BoothController: ObservableObject {
             return .failed
         }
 
-        // Mirror before saving, so the file, the on-screen review and the print
-        // all match the mirrored preview the guest just posed against.
-        if settings.mirrorImages {
-            let dpi = settings.dpi
-            let source = captured
-            if let flipped = await Task.detached(priority: .userInitiated, operation: {
-                LayoutRenderer.mirroredJPEG(source, dpi: dpi)
-            }).value {
-                captured = flipped
-            }
-        }
+        // Saved exactly as the camera took it.
+        //
+        // The live view is mirrored and the photograph is not, on purpose. A
+        // guest needs a mirror to pose against — raise your left hand and the
+        // person on screen raises theirs, or nobody can place themselves — but
+        // a mirrored photograph is a photograph in which every word is
+        // backwards: the banner behind them, the bride's sash, the name on the
+        // cake, a shirt. That is on the print and on the page for ever, and no
+        // amount of good framing makes up for it.
+        //
+        // So the flip lives on the screen only, where posing happens, and the
+        // file, the review that follows it, the print, the loop and the page
+        // all carry the scene as it was.
 
         // Black and white, applied to the frame itself rather than to each
         // output in turn: the print, the strip on the web page, the loop, the
@@ -1621,11 +1623,8 @@ final class BoothController: ObservableObject {
         Task { @MainActor in
             do {
                 guard let camera else { return }
-                var data = try await camera.capturePhoto()
-                if self.settings.mirrorImages,
-                   let flipped = LayoutRenderer.mirroredJPEG(data, dpi: self.settings.dpi) {
-                    data = flipped
-                }
+                // As the camera took it, the same as a session's photographs.
+                let data = try await camera.capturePhoto()
                 let dir = self.storage.root.appendingPathComponent("TestShots", isDirectory: true)
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 let url = dir.appendingPathComponent("test-\(Date().sessionFolderName).jpg")

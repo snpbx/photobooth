@@ -514,13 +514,13 @@ private struct CameraCard: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Toggle("Mirror images", isOn: Binding(
+                Toggle("Mirror the live view", isOn: Binding(
                     get: { c.settingsService.settings.mirrorImages },
                     set: { c.settingsService.settings.mirrorImages = $0 }))
                     .font(.system(size: 12))
                 Text(c.settings.mirrorImages
-                     ? "Guests see themselves as in a mirror, and the print matches."
-                     : "True to the scene — any text in shot reads correctly, but the preview flips.")
+                     ? "Guests pose against a mirror. The photographs themselves are never flipped, so any writing in shot reads correctly."
+                     : "The screen shows the scene as the camera sees it — raising a left hand moves the wrong side of the picture.")
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.textDim)
                     .fixedSize(horizontal: false, vertical: true)

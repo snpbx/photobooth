@@ -884,23 +884,6 @@ enum LayoutRenderer {
         return ctx.makeImage() ?? cg
     }
 
-    /// Flips a JPEG left-to-right, keeping its pixel dimensions and DPI.
-    static func mirroredJPEG(_ data: Data, dpi: Int) -> Data? {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
-              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil),
-              let ctx = CGContext(data: nil, width: cg.width, height: cg.height,
-                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { return nil }
-        ctx.interpolationQuality = .high
-        ctx.translateBy(x: CGFloat(cg.width), y: 0)
-        ctx.scaleBy(x: -1, y: 1)
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: CGFloat(cg.width), height: CGFloat(cg.height)))
-        guard let out = ctx.makeImage() else { return nil }
-        return jpegData(from: out, dpi: dpi)
-    }
-
     /// The same photograph in black and white, at its own size and DPI.
     ///
     /// `CIPhotoEffectMono` rather than simply draining the colour out: a flat

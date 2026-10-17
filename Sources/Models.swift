@@ -402,7 +402,13 @@ struct AppSettings: Codable, Equatable {
     /// Show the camera on the idle screen so guests can see themselves before
     /// they press. Costs a DSLR its battery and some sensor heat all evening.
     var idleLiveView: Bool = true
-    var mirrorImages: Bool = true       // preview, review and the saved file, together
+    /// Mirrors the **live view only**: the screen a guest poses against.
+    ///
+    /// Never the photograph. A mirrored photograph is one in which every word
+    /// is backwards — the banner, the sash, the name on the cake — and that
+    /// goes on the print and the page for ever. The name is kept as it was so
+    /// a settings file written by an older version still reads.
+    var mirrorImages: Bool = true
     /// How much the live picture is lifted on the guest screen, 0…0.5. A booth
     /// is usually the darkest corner of the room and the camera is exposed for
     /// the flash, so what the guest sees while framing can be far darker than

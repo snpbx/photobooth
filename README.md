@@ -184,7 +184,7 @@ Sources/
   CameraService.swift     CameraBackendService + DSLR / webcam / demo backends
   PrinterService.swift    CUPS discovery, status polling, job submission
   PhotoStorageService.swift  session tree, crash recovery, disk preflight
-  LayoutRenderer.swift    4×6 geometry and drawing, EXIF orientation, mirroring
+  LayoutRenderer.swift    4×6 geometry and drawing, EXIF orientation
   PrintTemplate.swift     operator-arranged sheets, and their store
   PrintEditor.swift       the layout editor window
   BrandingAssets.swift    footer artwork imported through Admin
@@ -415,6 +415,21 @@ gives up on a plain 200 — so the local server answers `206 Partial Content`.
 
 A session that is cancelled or fails throws its recording away rather than
 leaving half a file behind.
+
+## The mirror is the screen, not the photograph
+
+The live view is mirrored; the photographs never are.
+
+A guest needs a mirror to pose against — raise your left hand and the person on
+the screen raises theirs, or nobody can place themselves in the frame. But a
+mirrored *photograph* is one in which every word is backwards: the banner behind
+them, the bride's sash, the name on the cake, the writing on a shirt. That goes
+on the print, on the page and into the loop, for ever, and no amount of good
+framing makes up for it.
+
+So **Mirror the live view** in Admin flips the screen alone. The file as saved,
+the review that follows the shutter, the print, the loop and the page all carry
+the scene exactly as the camera saw it.
 
 ## Brightness, before the print goes out
 
