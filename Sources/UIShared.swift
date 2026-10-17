@@ -523,3 +523,36 @@ extension NSScreen {
                       height: min(desired.height, max(240, usable.height - margin * 2)))
     }
 }
+
+// MARK: - Pictures the console draws over and over
+
+/// Images read from disk, kept in memory.
+///
+/// A SwiftUI body runs every time anything it watches changes — and while a box
+/// is being dragged in the layout editor, that is every frame. Reading a
+/// photograph or a logo off the disk from inside a body therefore means
+/// decoding it tens of times a second: the editor's artwork, the gallery's
+/// prints, the loops. On a Mac mini with an evening's work in the library it is
+/// what makes the application appear to stop.
+///
+/// Keyed by the file's path *and* the moment it was last written, so a print
+/// rebuilt after a retake or an exposure change is picked up rather than being
+/// served from memory for ever.
+enum PictureCache {
+    private static let cache: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        c.countLimit = 80
+        return c
+    }()
+
+    static func image(at url: URL) -> NSImage? {
+        let stamp = (try? FileManager.default
+            .attributesOfItem(atPath: url.path)[.modificationDate] as? Date)?
+            .map { $0.timeIntervalSince1970 } ?? 0
+        let key = "\(url.path)|\(stamp)" as NSString
+        if let hit = cache.object(forKey: key) { return hit }
+        guard let img = NSImage(contentsOf: url) else { return nil }
+        cache.setObject(img, forKey: key)
+        return img
+    }
+}

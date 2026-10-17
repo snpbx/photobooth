@@ -279,7 +279,7 @@ struct PrintEditorView: View {
     private func overlayView(_ o: TemplateOverlay, sheet: CGSize) -> some View {
         box(o.rect, sheet: sheet, id: o.id, rotation: o.rotation) {
             Group {
-                if let u = BrandingAssets.url(for: o.file), let img = NSImage(contentsOf: u) {
+                if let u = BrandingAssets.url(for: o.file), let img = PictureCache.image(at: u) {
                     // `colorInvert` leaves transparency alone, the same way the
                     // renderer's filter does, so what is drawn here is what the
                     // sheet will carry.

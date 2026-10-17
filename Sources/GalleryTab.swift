@@ -272,7 +272,7 @@ private struct SessionDetail: View {
                         Text("FINAL PRINT")
                             .font(.system(size: 10, weight: .semibold)).tracking(1)
                             .foregroundStyle(Palette.textDim)
-                        if let img = NSImage(contentsOf: url) {
+                        if let img = PictureCache.image(at: url) {
                             Image(nsImage: img)
                                 .resizable().aspectRatio(contentMode: .fit)
                                 .frame(maxWidth: .infinity)
@@ -290,7 +290,7 @@ private struct SessionDetail: View {
                         Text("ANIMATED GIF")
                             .font(.system(size: 10, weight: .semibold)).tracking(1)
                             .foregroundStyle(Palette.textDim)
-                        if let img = NSImage(contentsOf: url) {
+                        if let img = PictureCache.image(at: url) {
                             // Animating here, unlike on the guest screen: the
                             // console is a place the operator is looking, and
                             // a still GIF tells them nothing about the loop.
@@ -316,7 +316,7 @@ private struct SessionDetail: View {
                             ForEach(rec.photos) { p in
                                 let url = p.url(in: c.storage.directory(for: rec.id))
                                 ZStack(alignment: .bottomLeading) {
-                                    if let img = NSImage(contentsOf: url) {
+                                    if let img = PictureCache.image(at: url) {
                                         Image(nsImage: img)
                                             .resizable().aspectRatio(contentMode: .fill)
                                             .frame(height: 62).clipped()

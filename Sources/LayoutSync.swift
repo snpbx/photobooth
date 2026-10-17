@@ -45,9 +45,36 @@ final class LayoutSync: ObservableObject {
     /// Whether syncing is even possible here: a repository with somewhere to
     /// push to. A booth that has never been set up for it says so plainly
     /// rather than offering a button that cannot work.
-    nonisolated var isConfigured: Bool {
-        FileManager.default.fileExists(atPath: repo.appendingPathComponent(".git").path)
-            && (try? git(["remote", "get-url", "origin"])) != nil
+    ///
+    /// **Stored, not asked.** This is read by the card that draws the button,
+    /// which means it is read on every redraw of the console — and it used to
+    /// answer by running `git remote get-url origin` and waiting for the
+    /// process. Launching a subprocess from inside a view body blocks the main
+    /// thread, every redraw, and on a Mac mini mid-event that is not a pause,
+    /// it is the whole application stopping for the best part of a minute.
+    ///
+    /// Worked out from the files instead, off the main thread, and only when
+    /// something could have changed it.
+    @Published private(set) var isConfigured = false
+
+    /// Re-reads whether this Mac can sync. Cheap, and never on the main thread.
+    func refreshAvailability() {
+        let folder = repo
+        Task.detached(priority: .utility) { [weak self] in
+            let git = folder.appendingPathComponent(".git")
+            var ok = FileManager.default.fileExists(atPath: git.path)
+            if ok {
+                let config = (try? String(contentsOf: git.appendingPathComponent("config"),
+                                          encoding: .utf8)) ?? ""
+                // A repository with no remote has nowhere to carry layouts to.
+                ok = config.contains("[remote ")
+            }
+            await MainActor.run { self?.isConfigured = ok }
+        }
+    }
+
+    init() {
+        refreshAvailability()
     }
 
     // MARK: - The one action
@@ -55,6 +82,8 @@ final class LayoutSync: ObservableObject {
     func sync(_ store: TemplateStore, branding: Bool = true) async {
         guard !status.isWorking else { return }
         guard isConfigured else {
+            // It may simply never have been looked at yet.
+            refreshAvailability()
             status = .failed("This Mac has no layout repository yet — see the README.")
             return
         }
@@ -65,6 +94,7 @@ final class LayoutSync: ObservableObject {
                 try await reconcile(store, branding: branding)
             }.value
             status = .done(Date(), summary)
+            refreshAvailability()
             log.info("Layouts synced — \(summary)")
         } catch {
             let message = (error as? SyncError)?.text ?? error.localizedDescription
