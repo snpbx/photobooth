@@ -1082,8 +1082,7 @@ final class BoothController: ObservableObject {
         if GIFRenderer.enabled, settings.makeGIF {
             let gifResult: Result<Data, Error> = await Task.detached(priority: .userInitiated) {
                 do {
-                    return .success(try GIFRenderer.renderSlideshow(stills: urls, layout: layout,
-                                                                    settings: snapshot, template: sheet))
+                    return .success(try GIFRenderer.renderSlideshow(stills: urls, settings: snapshot))
                 } catch { return .failure(error) }
             }.value
             switch gifResult {
@@ -1576,12 +1575,9 @@ final class BoothController: ObservableObject {
         guard GIFRenderer.enabled, settings.makeGIF else { return }
         let dir = storage.directory(for: rec)
         let urls = rec.photos.sorted { $0.index < $1.index }.map { $0.url(in: dir) }
-        let layout = rec.layout
         let snapshot = settings
-        let sheet = activeTemplate
         let made: Data? = await Task.detached(priority: .userInitiated) {
-            try? GIFRenderer.renderSlideshow(stills: urls, layout: layout,
-                                             settings: snapshot, template: sheet)
+            try? GIFRenderer.renderSlideshow(stills: urls, settings: snapshot)
         }.value
         guard let made else { return }
         var s = rec

@@ -443,23 +443,20 @@ since by then they are simply the session's photographs.
 
 ## The GIF
 
-Every session also produces `session.gif`: **each photograph in turn, whole, on
-the sheet's own background with the sheet's own artwork** — so the loop plainly
-came from the same booth as the strip in the guest's hand. One frame per
-photograph, held 0.8s by default, looping for ever.
+Every session also produces `session.gif`: **the photographs, one after
+another, and nothing else.** One frame per photograph, held 0.8s by default,
+looping for ever.
 
-**Landscape, and nothing cropped.** The frame used to be the sheet's own 4×6,
-composed like a page — which meant a 3:2 photograph was either cut down to a
-third of its width or floated in a sea of background, and what got cut was
-whoever stood at the edge. The loop has no paper to match, so it takes the
-camera's shape instead: `LayoutRenderer.compositeLandscape` fits the whole
-picture into a 6×4 frame, and the sheet's artwork is laid along a band at the
-foot of it.
+**No background, no border, no logo.** The loop was composed like the sheet for
+a while — the brand colour behind, the artwork along the foot — and it was
+wrong twice over: the branding is already on the strip in the guest's hand, and
+on a phone a frame of logo around a small picture is simply a smaller picture.
+What a guest sends on is the photograph.
 
-The artwork keeps its proportions there. Overlay rectangles are fractions of a
-4×6 sheet, so read against a 6×4 one they would stretch a logo half as wide
-again; each is drawn to fit inside the space it was given rather than filling
-it, and stays at the point across the page where the sheet has it.
+The frame is therefore the photograph's own shape at the chosen long edge: a
+3:2 camera makes a 3:2 loop, with nothing cropped and nothing added. There is
+no sheet in it, so none of the sheet's geometry applies — the layout and the
+template are not even passed in any more.
 
 A whole photograph rather than the printed strip. The print is the same picture
 twice, or six small ones; at the size a GIF is watched on a phone that leaves
@@ -472,11 +469,11 @@ version animated the seconds before each shutter from the preview stream; it
 depended on live view, held hundreds of megabytes of frames per session, and is
 gone.)
 
-The GIF's settings carry the print's geometry with `dpi` moved to match the
-smaller canvas — margins and type are specified in inches, so without that a
-quarter-inch margin becomes a third of a 320px sheet. The QR code is dropped: it
-is unreadable at that size, and hard black-and-white detail is the most expensive
-thing a 256-colour format can carry, repeated in every frame.
+Nothing of the print's geometry is carried over any more — there is no margin,
+no footer band and no code in the frame to size. (The code was dropped even when
+the loop was composed: it is unreadable at that size, and hard black-and-white
+detail is the most expensive thing a 256-colour format can carry, repeated in
+every frame.)
 
 One frame per photograph keeps it small. Measured on photographic content, an
 eight-shot session:

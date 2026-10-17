@@ -56,55 +56,20 @@ enum GIFRenderer {
         max(200, min(s.gifLongEdge, 1000))
     }
 
-    /// The settings the GIF is composed under: the print's geometry rescaled to
-    /// the GIF's canvas, minus the QR code.
+    /// The loop's frame: the photograph's own shape at the chosen long edge.
     ///
-    /// The rescale is the part that matters. Margins, gutters and footer type
-    /// are all specified in inches and turned into pixels through `dpi`, so
-    /// handing 300 DPI settings to a 320px sheet draws a quarter-inch margin as
-    /// a third of the page and sets the event name in letters wider than the
-    /// sheet itself. Moving `dpi` to match the canvas keeps every proportion the
-    /// print has — `schematic` does the same for the layout picker.
-    ///
-    /// The QR goes because it is unreadable at the size it would occupy here,
-    /// and because hard black-and-white detail is the most expensive thing a
-    /// 256-colour format can carry, repeated in every frame. Dropping it in the
-    /// settings rather than at draw time keeps the footer band sized for what is
-    /// actually in it, so the slots above stay where the print puts them.
-    static func composeSettings(_ s: AppSettings) -> AppSettings {
-        var g = s
-        g.printQRCode = false
-        // 6in is the long edge of the sheet.
-        g.dpi = max(20, Int((Double(clampedLongEdge(s)) / 6.0).rounded()))
-        return g
-    }
-
-    /// The loop's shape: **landscape**, because it carries one whole photograph
-    /// rather than a sheet of them.
-    ///
-    /// It used to be the sheet's own 4×6, which made sense while the frame was
-    /// composed like a page — but a 3:2 photograph in a portrait page is either
-    /// cropped to a third of its width or floated in a sea of background. On a
-    /// 6×4 the camera's picture very nearly fills the frame.
-    static func canvasSize(settings: AppSettings,
-                           photoAspect: CGFloat = 1.5,
-                           hasArtwork: Bool = false) -> CGSize {
-        let w = CGFloat(clampedLongEdge(settings))
-        // Never taller than wide: a portrait photograph is letterboxed rather
-        // than turning the loop on its end.
-        let aspect = max(1, photoAspect)
-        let inset = w * LayoutRenderer.frameInset
-        let picture = w - inset * 2
-        let height = (picture / aspect + inset * 2)
-            / (hasArtwork ? (1 - LayoutRenderer.artworkBand) : 1)
-        return CGSize(width: w.rounded(), height: height.rounded())
+    /// There is nothing else in the frame, so there is nothing else to size it
+    /// around — no margin, no footer band, no sheet. A 3:2 photograph makes a
+    /// 3:2 loop.
+    static func canvasSize(settings: AppSettings, photoAspect: CGFloat = 1.5) -> CGSize {
+        let long = CGFloat(clampedLongEdge(settings))
+        let aspect = max(0.2, min(photoAspect, 5))
+        return aspect >= 1
+            ? CGSize(width: long.rounded(), height: (long / aspect).rounded())
+            : CGSize(width: (long * aspect).rounded(), height: long.rounded())
     }
 
     /// The camera's own shape, from the first photograph that will go in.
-    ///
-    /// Taken from the pictures rather than assumed: a 6D gives 3:2, a webcam
-    /// 16:9, and a frame built for the wrong one puts the guests in a letterbox
-    /// of brand colour for the whole loop.
     private static func aspect(of stills: [URL]) -> CGFloat {
         for url in stills {
             if let img = LayoutRenderer.loadOrientedImage(at: url), img.height > 0 {
@@ -121,22 +86,20 @@ enum GIFRenderer {
     ///
     /// The photographs are what a guest wants to send on — not the seconds
     /// before them — and stills are what a session always has, whether or not
-    /// live view was running when the shutter fired. Each frame is a whole page
-    /// rather than the printed strip because a six-up strip at phone size leaves
-    /// every face the size of a thumbnail.
+    /// live view was running when the shutter fired.
+    ///
+    /// **The photographs and nothing else.** The loop was composed like the
+    /// sheet for a while: the background, the border, the operator's logos. But
+    /// the branding is already on the strip in their hand, and on a phone a
+    /// frame of logo around a small picture is simply a smaller picture. The
+    /// sheet's layout therefore has no bearing on this at all, which is why
+    /// neither it nor the template is asked for any more.
     ///
     /// Runs off the main thread.
-    static func renderSlideshow(stills: [URL],
-                                layout: PrintLayout,
-                                settings: AppSettings,
-                                template: PrintTemplate?) throws -> Data {
+    static func renderSlideshow(stills: [URL], settings: AppSettings) throws -> Data {
         guard !stills.isEmpty else { throw GIFError.noPhotos }
 
-        let g = composeSettings(settings)
-        let marked = !(template?.overlays.filter { !$0.file.isEmpty }.isEmpty ?? true)
-        let canvas = canvasSize(settings: settings,
-                                photoAspect: aspect(of: stills),
-                                hasArtwork: marked)
+        let canvas = canvasSize(settings: settings, photoAspect: aspect(of: stills))
         let hold = min(max(settings.gifSeconds, minSeconds), maxSeconds)
         // GIF stores delay on a hundredth-of-a-second grid; rounding here rather
         // than letting the encoder do it keeps the loop running at the length
@@ -166,10 +129,9 @@ enum GIFRenderer {
 
         var written = 0
         for url in stills {
-            guard let photo = LayoutRenderer.loadOrientedImage(at: url) else { continue }
-            let page = try LayoutRenderer.compositeLandscape(image: photo, canvas: canvas,
-                                                             settings: g, template: template)
-            CGImageDestinationAddImage(dest, page, frameProps)
+            guard let photo = LayoutRenderer.loadOrientedImage(at: url),
+                  let frame = LayoutRenderer.scaled(photo, to: canvas) else { continue }
+            CGImageDestinationAddImage(dest, frame, frameProps)
             written += 1
         }
         guard written > 0 else { throw GIFError.noPhotos }
