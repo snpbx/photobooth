@@ -402,6 +402,10 @@ struct AppSettings: Codable, Equatable {
     /// Show the camera on the idle screen so guests can see themselves before
     /// they press. Costs a DSLR its battery and some sensor heat all evening.
     var idleLiveView: Bool = true
+    /// A level line across the console's preview, for setting the camera up.
+    /// The console only — the guests' screen keeps nothing on it but them.
+    var horizonGuide: Bool = true
+
     /// Mirrors the **live view only**: the screen a guest poses against.
     ///
     /// Never the photograph. A mirrored photograph is one in which every word

@@ -416,6 +416,24 @@ gives up on a plain 200 — so the local server answers `206 Partial Content`.
 A session that is cancelled or fails throws its recording away rather than
 leaving half a file behind.
 
+## The horizon
+
+A booth is set up on carpet, on grass, on the lip of a stage, and a tripod is
+rarely as level as it looks from behind it. Nobody notices a degree and a half
+until the prints come out with the room leaning, and by then the evening is
+over.
+
+**Horizon** on the Camera card draws a level line across the middle of the
+console's preview, with an upright through the centre and a tick a sixth of the
+way in from each end. There is no sensor in a 6D the booth can read, so this is
+not a spirit level — it is a straight line to hold against something in the room
+that is known to be level: a skirting board, a table edge, the seam where the
+backdrop meets the floor. Two ticks sitting at the same height on a wall settle
+the question that one line on its own leaves open.
+
+It is broken either side of centre so nobody's face is crossed out by it, and it
+is on the console only. The guests' screen carries nothing but the guests.
+
 ## The mirror is the screen, not the photograph
 
 The live view is mirrored; the photographs never are.

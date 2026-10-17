@@ -452,6 +452,13 @@ private struct CameraCard: View {
                                  tint: Color(hex: c.settings.accentHex),
                                  dims: false, thirds: false)
                         .padding(8)
+
+                    if c.settings.horizonGuide {
+                        HorizonGuide(imageAspect: (live.frame?.size.width ?? 4)
+                                                / max(1, live.frame?.size.height ?? 3),
+                                     tint: Color(hex: c.settings.accentHex))
+                            .padding(8)
+                    }
                 }
             }
             .aspectRatio(4.0/3.0, contentMode: .fit)
@@ -461,6 +468,12 @@ private struct CameraCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Palette.hairline)
                 .allowsHitTesting(false))
+
+            Toggle("Horizon", isOn: Binding(
+                get: { c.settingsService.settings.horizonGuide },
+                set: { c.settingsService.settings.horizonGuide = $0 }))
+                .font(.system(size: 12))
+                .help("A level line across the middle of the preview, to set the camera against something in the room that is level. The console only — the guests never see it.")
 
             if c.detectedCameras.isEmpty {
                 Text(c.settings.cameraBackend == .dslr

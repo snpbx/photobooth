@@ -556,3 +556,73 @@ enum PictureCache {
         return img
     }
 }
+
+// MARK: - Horizon
+
+/// A level to hang the camera on, over the console's preview.
+///
+/// A booth is set up on carpet, on grass, on a stage lip, and the tripod is
+/// rarely as level as it looks from behind it. Nobody notices a degree and a
+/// half until the prints come out with the room leaning — by which time the
+/// evening is over. There is no sensor in a 6D the booth can read, so this is
+/// not a spirit level: it is a straight line, held exactly across the middle of
+/// the picture, to put against something in the room that is known to be level
+/// — a skirting board, a table edge, the line where the backdrop meets the
+/// floor.
+///
+/// Deliberately quiet. It sits under the framing guide, is broken in the middle
+/// so nobody's face is crossed out by it, and carries ticks a sixth of the way
+/// in from each end: a line that is level is easy to doubt, two ticks that sit
+/// at the same height on a wall are not.
+struct HorizonGuide: View {
+    /// Width ÷ height of the picture the camera is sending.
+    let imageAspect: CGFloat
+    var tint: Color = VHS.amber
+    /// The upright, for a backdrop seam or a door frame.
+    var plumb = true
+
+    var body: some View {
+        GeometryReader { geo in
+            let shown = FramingGuide.fit(aspect: imageAspect, in: geo.size)
+            let r = CGRect(x: (geo.size.width - shown.width) / 2,
+                           y: (geo.size.height - shown.height) / 2,
+                           width: shown.width, height: shown.height)
+            let gap = min(r.width, r.height) * 0.10
+            let tick = min(r.width, r.height) * 0.035
+
+            ZStack {
+                Path { p in
+                    // The horizon, broken either side of centre.
+                    p.move(to: CGPoint(x: r.minX, y: r.midY))
+                    p.addLine(to: CGPoint(x: r.midX - gap, y: r.midY))
+                    p.move(to: CGPoint(x: r.midX + gap, y: r.midY))
+                    p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+                    // A tick a sixth in from each end, to read against a wall.
+                    for f in [1.0 / 6.0, 5.0 / 6.0] {
+                        let x = r.minX + r.width * f
+                        p.move(to: CGPoint(x: x, y: r.midY - tick))
+                        p.addLine(to: CGPoint(x: x, y: r.midY + tick))
+                    }
+                    if plumb {
+                        p.move(to: CGPoint(x: r.midX, y: r.minY))
+                        p.addLine(to: CGPoint(x: r.midX, y: r.midY - gap))
+                        p.move(to: CGPoint(x: r.midX, y: r.midY + gap))
+                        p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+                    }
+                }
+                .stroke(tint.opacity(0.55), lineWidth: 1)
+
+                // The centre itself, so the middle of the frame is findable
+                // even though the lines stop short of it.
+                Path { p in
+                    p.move(to: CGPoint(x: r.midX - tick * 0.5, y: r.midY))
+                    p.addLine(to: CGPoint(x: r.midX + tick * 0.5, y: r.midY))
+                    p.move(to: CGPoint(x: r.midX, y: r.midY - tick * 0.5))
+                    p.addLine(to: CGPoint(x: r.midX, y: r.midY + tick * 0.5))
+                }
+                .stroke(tint.opacity(0.85), lineWidth: 1)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
