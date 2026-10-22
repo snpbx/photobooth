@@ -402,6 +402,15 @@ struct AppSettings: Codable, Equatable {
     /// Show the camera on the idle screen so guests can see themselves before
     /// they press. Costs a DSLR its battery and some sensor heat all evening.
     var idleLiveView: Bool = true
+    /// The Instagram account a guest is asked to follow before their
+    /// photographs. Empty — the default — asks nobody anything.
+    ///
+    /// Asked, not enforced: whether somebody follows an account is between
+    /// them and Instagram, and the only way to know would be to make every
+    /// guest sign into Instagram through the booth. The page shows the handle,
+    /// opens the app, and lets them through.
+    var instagramHandle: String = ""
+
     /// What a borderless SELPHY loses off each edge, in inches.
     ///
     /// Full-bleed printing works by enlarging the picture past the paper and

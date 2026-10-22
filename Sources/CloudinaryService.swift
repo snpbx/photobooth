@@ -111,16 +111,19 @@ struct CloudinaryService {
     /// GIFs are uploaded as images, so they share the photograph's addressing —
     /// only the delivery extension differs, and it has to be `.gif` or the CDN
     /// returns a single flattened frame.
-    func gifURL(token: String) -> URL? {
+    /// - Parameter fileName: the loop's own name in the session folder. A loop
+    ///   rebuilt after a retake carries a new one, and the address has to
+    ///   follow it or the page keeps pointing at the first version.
+    func gifURL(token: String, fileName: String = GIFRenderer.fileName) -> URL? {
         guard let base = url(for: .image,
-                             publicID: Self.photoPublicID(token: token, fileName: GIFRenderer.fileName))
+                             publicID: Self.photoPublicID(token: token, fileName: fileName))
         else { return nil }
         return URL(string: base.absoluteString + ".gif")
     }
 
-    func gifSaveURL(token: String) -> URL? {
+    func gifSaveURL(token: String, fileName: String = GIFRenderer.fileName) -> URL? {
         Self.attachmentURL(cloudName: config.cloudName,
-                           publicID: Self.photoPublicID(token: token, fileName: GIFRenderer.fileName),
+                           publicID: Self.photoPublicID(token: token, fileName: fileName),
                            saveAs: GIFRenderer.fileName)
     }
 

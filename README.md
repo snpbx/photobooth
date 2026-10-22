@@ -416,6 +416,30 @@ gives up on a plain 200 — so the local server answers `206 Partial Content`.
 A session that is cancelled or fails throws its recording away rather than
 leaving half a file behind.
 
+## Follow us first
+
+With an Instagram handle set in **Gallery site**, a guest scanning the code
+meets one screen before their photographs: the booth's mark, the handle, a
+button that opens Instagram, and a way through. It is remembered per phone, so
+coming back for a second download does not ask again.
+
+**It asks; it cannot check.** Whether somebody follows an account is between
+them and Instagram. The only way to know would be for every guest to sign into
+Instagram through the booth — which nobody at a party will do, and which would
+make a photobooth responsible for other people's credentials. So this is a door
+with a polite sign on it, not a lock.
+
+The way through appears once the Instagram button has been used, when the phone
+comes back from the app, or after twelve seconds — whichever happens first.
+Nobody is ever stuck in front of their own photographs.
+
+**It is drawn by script and removed by script.** A gate that could not be
+dismissed — JavaScript switched off, an in-app browser that blocked it — would
+be a booth that ate the photographs, so a page with no script simply has no
+gate. It is also never shown on the local-wifi gallery: that page exists for
+venues with no internet, where opening Instagram is the one thing that cannot
+work.
+
 ## What the SELPHY takes off
 
 A borderless print does not print to the edge of the paper — it prints *past*
@@ -1018,6 +1042,12 @@ Two things the editor does deliberately:
 
 - Each JPEG is written to disk before anything else in the workflow continues,
   and the camera card copy is only deleted after that write returns.
+- **A sheet or a loop rebuilt after publishing is saved under a new name**
+  (`print-2.jpg`, `session-2.gif`). The same reasoning as a retake, and the
+  same trap: the first upload has already put a picture behind `print.jpg` on
+  the CDN, an unsigned upload will not replace it, and the page went on showing
+  the sheet made from the shot the guests asked to do again. Normal sessions —
+  shot once, never touched — keep a folder with one `print.jpg` in it.
 - **A retake is saved under its own name** — `photo-NN-take2.jpg`, then
   `-take3` — and the frame it supersedes is archived as
   `photo-NN.retake-<epoch>.jpg` rather than deleted. The new name is the point:

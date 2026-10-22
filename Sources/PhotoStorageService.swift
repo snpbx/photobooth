@@ -302,6 +302,27 @@ final class PhotoStorageService: ObservableObject {
         return base + ".jpg"
     }
 
+    /// Keeps the name while nothing has been published under it, and takes the
+    /// next one along once something has.
+    ///
+    /// Normal sessions — the overwhelming majority, shot once and never
+    /// touched — therefore keep a folder with one `print.jpg` in it. Only a
+    /// session whose sheet is rebuilt *after* it went up collects a second.
+    static func freshName(for current: String?, stem: String, ext: String,
+                          published: Bool, in dir: URL) -> String {
+        let first = "\(stem).\(ext)"
+        guard published, current != nil else { return current ?? first }
+        var n = 2
+        while n < 60 {
+            let name = "\(stem)-\(n).\(ext)"
+            if !FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path) {
+                return name
+            }
+            n += 1
+        }
+        return "\(stem)-\(Int(Date().timeIntervalSince1970)).\(ext)"
+    }
+
     /// The name an adjusted frame is written under.
     ///
     /// For the same reason a retake gets one: the photographs are delivered
@@ -333,9 +354,20 @@ final class PhotoStorageService: ObservableObject {
         return String(format: "photo-%02d-take%d.jpg", index, Int(Date().timeIntervalSince1970))
     }
 
+    /// Saves the composed sheet, under a new name if the old one has been
+    /// published.
+    ///
+    /// A retake rebuilds the sheet, and the rebuilt sheet used to be written
+    /// over `print.jpg` — the same name it was published under. The
+    /// photographs are delivered from a CDN keyed by that name, and a name
+    /// that already has a picture behind it keeps the picture it already has:
+    /// the guests' page went on showing the sheet made from the shot they
+    /// asked to do again. A name that has never been published cannot.
     func savePrint(_ jpeg: Data, in session: SessionRecord) throws -> String {
-        let name = "print.jpg"
-        let dest = directory(for: session).appendingPathComponent(name)
+        let dir = directory(for: session)
+        let name = Self.freshName(for: session.printFileName, stem: "print", ext: "jpg",
+                                  published: session.uploadState == .uploaded, in: dir)
+        let dest = dir.appendingPathComponent(name)
         do {
             try jpeg.write(to: dest, options: .atomic)
         } catch {
@@ -345,9 +377,14 @@ final class PhotoStorageService: ObservableObject {
         return name
     }
 
+    /// The loop, under the same rule as the sheet: a rebuild after publishing
+    /// needs a name of its own.
     func saveGIF(_ gif: Data, in session: SessionRecord) throws -> String {
-        let name = GIFRenderer.fileName
-        let dest = directory(for: session).appendingPathComponent(name)
+        let dir = directory(for: session)
+        let stem = (GIFRenderer.fileName as NSString).deletingPathExtension
+        let name = Self.freshName(for: session.gifFileName, stem: stem, ext: "gif",
+                                  published: session.uploadState == .uploaded, in: dir)
+        let dest = dir.appendingPathComponent(name)
         do {
             try gif.write(to: dest, options: .atomic)
         } catch {

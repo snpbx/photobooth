@@ -56,6 +56,8 @@ struct PagesPublisher {
     var logoFile: String?
     /// What the notice on every page says. 0 shows none.
     var retentionDays: Int = 0
+    /// The account a guest is asked to follow before their photographs.
+    var instagramHandle: String = ""
 
     /// Where a page one level deep reaches the logo, once it is written.
     private var logoHref: String? { logoFile == nil ? nil : "../../logo.png" }
@@ -329,7 +331,8 @@ struct PagesPublisher {
                                              brandLink: brandLink,
                                              brandLabel: brandLabel,
                                              logo: logoHref,
-                                             retentionDays: retentionDays)
+                                             retentionDays: retentionDays,
+                                             instagram: instagramHandle)
         try page.data(using: .utf8)!.write(to: dir.appendingPathComponent("index.html"))
     }
 

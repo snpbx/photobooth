@@ -660,6 +660,27 @@ struct GallerySiteCard: View {
             }
             .font(.system(size: 12))
 
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledRow(label: "Ask guests to follow",
+                           help: "Shown before the photographs, once per phone. Leave it empty and nobody is asked anything.") {
+                    HStack(spacing: 4) {
+                        Text("@").font(.system(size: 12)).foregroundStyle(Palette.textDim)
+                        TextField("yourbooth", text: Binding(
+                            get: { c.settingsService.settings.instagramHandle },
+                            set: { c.settingsService.settings.instagramHandle =
+                                    $0.trimmingCharacters(in: CharacterSet(charactersIn: " @/")) }))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                    }
+                }
+                if !c.settings.instagramHandle.isEmpty {
+                    Text("A door with a sign on it, not a lock: the page shows the handle and opens Instagram, then lets them through. Whether somebody actually follows is between them and Instagram — checking would mean every guest signing into Instagram through the booth.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             LabeledRow(label: "Tell guests they have",
                        help: "Printed on every page as “save them now”. Nothing is deleted automatically — this is a promise you keep, not a timer. Set it to 0 to say nothing.") {
                 Picker("", selection: Binding(

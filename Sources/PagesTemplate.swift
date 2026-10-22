@@ -128,6 +128,20 @@ enum PagesTemplate {
             border-radius:28px; background:transparent; color:inherit; text-decoration:none;
             font:400 14px/1 var(--sans); letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; }
     .pill.sm { min-height:36px; padding:0 14px; font-size:12px; }
+    .pill.big { min-height:54px; font-size:15px; background:var(--ink); color:var(--cream); border-color:var(--ink); }
+    .pill.ghost { background:transparent; }
+
+    /* The follow-us door. Drawn by script, removed by script. */
+    .gate { position:fixed; inset:0; z-index:50; background:var(--cream);
+            display:flex; align-items:center; justify-content:center; padding:24px; }
+    .gate[hidden] { display:none; }
+    .gatebox { width:min(520px,100%); display:flex; flex-direction:column; align-items:center;
+               gap:16px; text-align:center; }
+    .gatebox img { max-width:min(240px,62vw); height:auto; }
+    .gatebox .mark { font:700 24px/1 var(--sans); letter-spacing:.02em; }
+    .gatebox h2 { font:700 clamp(28px,9vw,44px)/0.95 var(--sans); letter-spacing:-0.02em; margin:0; }
+    .gatebox p { margin:0; font:400 15px/1.45 var(--sans); color:var(--stone); max-width:34ch; }
+    .gatebox .small { font-size:13px; }
 
     /* Sunset bands — full bleed, name left, pill right, colour in fixed order */
     .bands { display:flex; flex-direction:column; }
@@ -290,6 +304,77 @@ enum PagesTemplate {
             return "<img src=\"\(esc(logo))\" alt=\"\(esc(siteTitle))\">"
         }
         return "<span class=\"mark\">\(esc(siteTitle))</span>"
+    }
+
+    /// The screen a guest meets before their photographs: follow us first.
+    ///
+    /// **It asks; it cannot check.** Whether somebody has followed an account
+    /// is private to Instagram, and the only way to know would be for each
+    /// guest to log into Instagram through us — which is a thing no one at a
+    /// party will do, and which would make the booth responsible for other
+    /// people's credentials. So this is a door with a polite sign on it, not a
+    /// lock: the handle, a button that opens the app, and a way through.
+    ///
+    /// The way through only appears once the Instagram button has been used,
+    /// and the whole thing is remembered per phone so nobody meets it twice on
+    /// their way back for a second download.
+    ///
+    /// **Hidden unless the script runs.** A page that cannot be dismissed
+    /// because JavaScript is off, or because an in-app browser blocked it,
+    /// would be a booth that ate the photographs — so the gate is drawn only
+    /// by the script that can also take it away. No script, no gate.
+    private static func instagramGate(handle: String, logo: String?, siteTitle: String) -> String {
+        let clean = handle.trimmingCharacters(in: CharacterSet(charactersIn: " @/"))
+        guard !clean.isEmpty else { return "" }
+        let profile = "https://instagram.com/\(clean)"
+        return """
+        <div id="ig" class="gate" hidden>
+          <div class="gatebox">
+            \(mark(siteTitle: siteTitle, logo: logo))
+            <h2>One thing first</h2>
+            <p>Follow us for the rest of the night's photographs — then your own are right behind this.</p>
+            <a class="pill big" id="igopen" href="\(esc(profile))" target="_blank" rel="noopener">Follow @\(esc(clean))</a>
+            <button class="pill ghost" id="igskip" hidden>Continue to my photos</button>
+            <p class="small" id="ighint">Opens Instagram. Come back here afterwards.</p>
+          </div>
+        </div>
+        <script>
+        (function(){
+          var key = 'snapbox-ig-\(esc(clean))';
+          try { if (localStorage.getItem(key) === 'done') return; } catch (e) {}
+          var gate = document.getElementById('ig');
+          if (!gate) return;
+          gate.hidden = false;
+          document.documentElement.style.overflow = 'hidden';
+          var go = document.getElementById('igskip');
+          var hint = document.getElementById('ighint');
+          function allow() {
+            if (!go) return;
+            go.hidden = false;
+            if (hint) hint.textContent = 'Thank you — your photographs are below.';
+          }
+          var tapped = false;
+          var open = document.getElementById('igopen');
+          if (open) open.addEventListener('click', function () {
+            tapped = true;
+            setTimeout(allow, 400);
+          });
+          // Coming back from the Instagram app counts — but only for somebody
+          // who went there. A page restored from a background tab has not
+          // been anywhere.
+          document.addEventListener('visibilitychange', function () {
+            if (!document.hidden && tapped) allow();
+          });
+          // And nobody is ever stuck in front of their own photographs.
+          setTimeout(allow, 12000);
+          if (go) go.addEventListener('click', function () {
+            try { localStorage.setItem(key, 'done'); } catch (e) {}
+            gate.hidden = true;
+            document.documentElement.style.overflow = '';
+          });
+        })();
+        </script>
+        """
     }
 
     private static func foot(brandLink: String?, brandLabel: String,
@@ -478,7 +563,8 @@ enum PagesTemplate {
                             brandLink: String? = nil,
                             brandLabel: String = "",
                             logo: String? = nil,
-                            retentionDays: Int = 0) -> String {
+                            retentionDays: Int = 0,
+                            instagram: String = "") -> String {
         var all = photos
         if let p = printRef { all.append(p) }
         if let g = gifRef { all.append(g) }
@@ -490,6 +576,10 @@ enum PagesTemplate {
         let zipName = "photos-\(session.publicToken).zip"
 
         var html = head("Your photos — \(event.name)", siteTitle: siteTitle, logo: logo)
+        // Before anything of theirs. It is the first thing in the body, so a
+        // phone that paints the page before the script runs still shows it at
+        // the top rather than flashing the photographs behind it.
+        html += instagramGate(handle: instagram, logo: logo, siteTitle: siteTitle)
         html += """
         <header class="hero pad">
           <div><h1>Your<br>photos</h1></div>

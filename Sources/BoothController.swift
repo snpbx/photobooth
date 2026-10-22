@@ -1557,7 +1557,11 @@ final class BoothController: ObservableObject {
                     self.currentSession = s
                     self.sessionPrintImage = NSImage(data: data)
                 }
-                if thenRepublish {
+                // A sheet rebuilt for a session that is already on the web is
+                // rebuilt *because* the one on the web is wrong — a retake, an
+                // exposure, a layout changed after the fact. Leaving the new
+                // one on the disk would be doing half the job.
+                if thenRepublish || rec.uploadState == .uploaded {
                     // The loop is made of the same photographs, so it is wrong
                     // now too — and the page is made of both.
                     await self.rebuildGIF(for: s)
@@ -1696,6 +1700,7 @@ final class BoothController: ObservableObject {
         p.linksAlbum = settings.linkAlbumFromSessions
         p.logoFile = settings.idleLogoFile.isEmpty ? nil : settings.idleLogoFile
         p.retentionDays = max(0, settings.photoRetentionDays)
+        p.instagramHandle = settings.instagramHandle
         return p
     }
 
@@ -1868,9 +1873,9 @@ final class BoothController: ObservableObject {
                     return AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: p.index)
                 }
                 var printShot: AlbumSite.Shot?
-                if s.printFileName != nil,
-                   let src = cloud.photoURL(token: s.publicToken, fileName: "print.jpg"),
-                   let save = cloud.photoSaveURL(token: s.publicToken, fileName: "print.jpg") {
+                if let sheet = s.printFileName,
+                   let src = cloud.photoURL(token: s.publicToken, fileName: sheet),
+                   let save = cloud.photoSaveURL(token: s.publicToken, fileName: sheet) {
                     printShot = AlbumSite.Shot(src: src.absoluteString, save: save.absoluteString, index: 0)
                 }
                 var gifShot: AlbumSite.Shot?
@@ -1999,12 +2004,13 @@ final class BoothController: ObservableObject {
         let photos: [PagesTemplate.PhotoRef] = settings.uploadOriginals
             ? session.photos.sorted { $0.index < $1.index }.compactMap { ref($0.fileName) }
             : []
-        let printRef = (settings.uploadPrints && session.printFileName != nil) ? ref("print.jpg") : nil
+        let printRef = settings.uploadPrints ? session.printFileName.flatMap(ref) : nil
         // The loop is addressed as a GIF rather than through `ref`, whose `.jpg`
         // would hand the guest one flattened frame of it.
         let gifRef: PagesTemplate.PhotoRef? = {
-            guard GIFRenderer.enabled, settings.uploadGIFs, session.gifFileName != nil,
-                  let src = cloud.gifURL(token: token), let save = cloud.gifSaveURL(token: token)
+            guard GIFRenderer.enabled, settings.uploadGIFs, let loop = session.gifFileName,
+                  let src = cloud.gifURL(token: token, fileName: loop),
+                  let save = cloud.gifSaveURL(token: token, fileName: loop)
             else { return nil }
             return PagesTemplate.PhotoRef(src: src.absoluteString, save: save.absoluteString)
         }()
@@ -2020,9 +2026,11 @@ final class BoothController: ObservableObject {
             .filter { $0.eventID == eventID && $0.finishedAt != nil && !$0.publicToken.isEmpty }
             .sorted { $0.startedAt < $1.startedAt }
             .map { s in
-                let cover = s.printFileName != nil
-                    ? cloud.photoURL(token: s.publicToken, fileName: "print.jpg")
-                    : s.photos.sorted { $0.index < $1.index }.first
+                // The sheet if there is one, otherwise the first photograph —
+                // each under whatever name it currently carries.
+                let cover = s.printFileName
+                    .flatMap { cloud.photoURL(token: s.publicToken, fileName: $0) }
+                    ?? s.photos.sorted { $0.index < $1.index }.first
                         .flatMap { cloud.photoURL(token: s.publicToken, fileName: $0.fileName) }
                 return PagesTemplate.AlbumEntry(
                     href: "../../\(PagesPublisher.sessionPath(token: s.publicToken))/",
@@ -2090,13 +2098,13 @@ final class BoothController: ObservableObject {
         if settings.uploadPrints, let name = session.printFileName {
             let src = dir.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: src.path) {
-                let web = scratch.appendingPathComponent("print.jpg")
+                let web = scratch.appendingPathComponent(name)
                 try await Task.detached(priority: .utility) {
                     try PagesPublisher.webCopy(from: src, to: web, longEdge: max(longEdge, 1800))
                 }.value
                 _ = try await cloud.upload(fileURL: web,
                                            publicID: CloudinaryService.photoPublicID(token: token,
-                                                                                     fileName: "print.jpg"),
+                                                                                     fileName: name),
                                            type: .image)
                 uploaded += 1
             }
@@ -2122,7 +2130,7 @@ final class BoothController: ObservableObject {
             if hasBytes(src) {
                 _ = try await cloud.upload(fileURL: src,
                                            publicID: CloudinaryService.photoPublicID(token: token,
-                                                                                     fileName: GIFRenderer.fileName),
+                                                                                     fileName: name),
                                            type: .image)
                 uploaded += 1
             }
@@ -2301,7 +2309,8 @@ final class BoothController: ObservableObject {
         guard settings.uploadGIFs else { return nil }
         switch settings.galleryHost {
         case .cloudinary:
-            return cloudinary?.gifURL(token: rec.publicToken)
+            guard let loop = rec.gifFileName else { return nil }
+            return cloudinary?.gifURL(token: rec.publicToken, fileName: loop)
         case .githubPages:
             guard let base = normalisedSiteBase else { return nil }
             return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/\(GIFRenderer.fileName)")
@@ -2383,9 +2392,8 @@ final class BoothController: ObservableObject {
             if pagesPublisher() != nil, let base = normalisedSiteBase {
                 return URL(string: "\(base)/\(PagesPublisher.sessionPath(token: rec.publicToken))/")
             }
-            let name = rec.printFileName != nil
-                ? "print.jpg"
-                : (rec.photos.sorted { $0.index < $1.index }.first?.fileName ?? "")
+            let name = rec.printFileName
+                ?? (rec.photos.sorted { $0.index < $1.index }.first?.fileName ?? "")
             guard !name.isEmpty else { return nil }
             return cloud.photoURL(token: rec.publicToken, fileName: name)
         }
