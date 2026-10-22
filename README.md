@@ -419,19 +419,23 @@ leaving half a file behind.
 ## Follow us first
 
 With an Instagram handle set in **Gallery site**, a guest scanning the code
-meets one screen before their photographs: the booth's mark, the handle, a
-button that opens Instagram, and a way through. It is remembered per phone, so
-coming back for a second download does not ask again.
+meets one card before their photographs: the booth's mark, the handle, a button
+that opens Instagram, and a way through.
+
+**Every visit, and closable the moment it appears.** It once held the way out
+back until the Instagram button had been used, and remembered the phones that
+had already seen it. Both were wrong for what this is — a booth asking a favour
+at a party, where the photographs are the thing that was paid for and the
+follow is the thing that would be nice. So it asks again each time the code is
+scanned, and a close button, the Continue button and the Escape key all clear
+it at once. Tapping through to Instagram clears it too: the ask has been
+answered, and nobody should have to dismiss the same card twice.
 
 **It asks; it cannot check.** Whether somebody follows an account is between
 them and Instagram. The only way to know would be for every guest to sign into
 Instagram through the booth — which nobody at a party will do, and which would
 make a photobooth responsible for other people's credentials. So this is a door
 with a polite sign on it, not a lock.
-
-The way through appears once the Instagram button has been used, when the phone
-comes back from the app, or after twelve seconds — whichever happens first.
-Nobody is ever stuck in front of their own photographs.
 
 **It is drawn by script and removed by script.** A gate that could not be
 dismissed — JavaScript switched off, an in-app browser that blocked it — would

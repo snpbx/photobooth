@@ -662,7 +662,7 @@ struct GallerySiteCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 LabeledRow(label: "Ask guests to follow",
-                           help: "Shown before the photographs, once per phone. Leave it empty and nobody is asked anything.") {
+                           help: "Shown before the photographs, every time the code is scanned. Leave it empty and nobody is asked anything.") {
                     HStack(spacing: 4) {
                         Text("@").font(.system(size: 12)).foregroundStyle(Palette.textDim)
                         TextField("yourbooth", text: Binding(
@@ -674,7 +674,7 @@ struct GallerySiteCard: View {
                     }
                 }
                 if !c.settings.instagramHandle.isEmpty {
-                    Text("A door with a sign on it, not a lock: the page shows the handle and opens Instagram, then lets them through. Whether somebody actually follows is between them and Instagram — checking would mean every guest signing into Instagram through the booth.")
+                    Text("Asked every visit, and closable the moment it appears — the photographs are what they were promised, the follow is the favour. Whether somebody actually follows is between them and Instagram; checking would mean every guest signing into Instagram through the booth.")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.textDim)
                         .fixedSize(horizontal: false, vertical: true)
