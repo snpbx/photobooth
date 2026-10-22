@@ -402,6 +402,20 @@ struct AppSettings: Codable, Equatable {
     /// Show the camera on the idle screen so guests can see themselves before
     /// they press. Costs a DSLR its battery and some sensor heat all evening.
     var idleLiveView: Bool = true
+    /// What a borderless SELPHY loses off each edge, in inches.
+    ///
+    /// Full-bleed printing works by enlarging the picture past the paper and
+    /// letting the surplus run off, so the sheet that comes out is not quite
+    /// the sheet that was composed. Roughly two millimetres a side on a
+    /// CP1500 — but it varies with the paper and the cassette, which is why it
+    /// is a setting and not a constant: print one sheet, measure what went
+    /// missing, and type that in.
+    var trimBleedInches: Double = 0.079     // ~2 mm
+    /// How far in from the paper's edge anything that must survive should sit.
+    /// Wider than the trim on purpose: a logo that ends exactly where the
+    /// blade falls still looks like a mistake.
+    var trimSafeInches: Double = 0.197      // ~5 mm
+
     /// A level line across the console's preview, for setting the camera up.
     /// The console only — the guests' screen keeps nothing on it but them.
     var horizonGuide: Bool = true

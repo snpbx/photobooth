@@ -416,6 +416,30 @@ gives up on a plain 200 — so the local server answers `206 Partial Content`.
 A session that is cancelled or fails throws its recording away rather than
 leaving half a file behind.
 
+## What the SELPHY takes off
+
+A borderless print does not print to the edge of the paper — it prints *past*
+it. The picture is enlarged until it overhangs on all four sides and the
+surplus runs off, which is how there comes to be no white border, and also why
+the sheet that comes out is not quite the sheet that was composed. About two
+millimetres a side goes, and the first anybody usually knows about it is a logo
+with its feet cut off, by which point it is on fifty prints.
+
+The editor's **SELPHY trim** guide shades that band in pink and marks a dashed
+line further in. Anything that has to survive — faces, a logo, the guest code —
+belongs inside the dashed line; anything in the pink is a gamble.
+
+Both distances are settings rather than constants, in millimetres because that
+is how paper is measured, because the loss varies with the cassette and the
+paper: **print one sheet, measure what went missing, and type it in.** The
+defaults are 2 mm trimmed and 5 mm safe. The safe line sits wider than the trim
+on purpose — a logo that ends exactly where the blade falls still looks like a
+mistake.
+
+Guides only. Nothing here is printed; it is drawn over the canvas for the
+operator and is not part of the layout, so two Macs sharing layouts do not
+argue about it.
+
 ## The horizon
 
 A booth is set up on carpet, on grass, on the lip of a stage, and a tripod is

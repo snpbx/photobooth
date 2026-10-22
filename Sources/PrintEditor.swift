@@ -64,6 +64,7 @@ struct PrintEditorView: View {
     @State private var showGrid = true
     @State private var showRulers = true
     @State private var snapping = true
+    @State private var showTrim = true
     /// Divisions across the sheet's short edge. Twelve is an inch of a 4in sheet
     /// cut into thirds — the spacing most of these layouts already fall on.
     @State private var gridDivisions = 12
@@ -249,6 +250,15 @@ struct PrintEditorView: View {
                             .foregroundStyle(Palette.ink)
                     }
                 }
+            }
+
+            // Over everything, because the question it answers is about
+            // everything: what comes back off the printer narrower than it
+            // went on.
+            if showTrim {
+                TrimGuides(sheet: sheet,
+                           bleed: inches(c.settings.trimBleedInches, on: sheet),
+                           safe: inches(c.settings.trimSafeInches, on: sheet))
             }
         }
         .clipped()
@@ -595,6 +605,21 @@ struct PrintEditorView: View {
             Toggle("Rulers", isOn: $showRulers).font(.system(size: 12))
             Toggle("Snap to grid and edges", isOn: $snapping).font(.system(size: 12))
 
+            Toggle("SELPHY trim", isOn: $showTrim).font(.system(size: 12))
+            if showTrim {
+                Text("The pink band is the part the printer trims off a borderless sheet. Keep anything that has to survive — faces, a logo, the code — inside the dashed line.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.midGray)
+                    .fixedSize(horizontal: false, vertical: true)
+                millimetreRow("Trimmed", help: "Measured off each edge. Print one sheet, measure what went missing, type it here.",
+                              binding: Binding(
+                                get: { c.settingsService.settings.trimBleedInches },
+                                set: { c.settingsService.settings.trimBleedInches = $0 }))
+                millimetreRow("Safe", help: "How far in from the paper's edge anything that must survive should sit.",
+                              binding: Binding(
+                                get: { c.settingsService.settings.trimSafeInches },
+                                set: { c.settingsService.settings.trimSafeInches = $0 }))
+            }
+
             LabeledRow(label: "Grid",
                        help: "Squares across the short edge. Things snap to these, to the sheet's middle, and to the edges and centres of everything already on it.") {
                 Picker("", selection: $gridDivisions) {
@@ -887,6 +912,29 @@ struct PrintEditorView: View {
     }
 
     // MARK: - Actions
+
+    /// Inches into points on the canvas. The sheet is four inches across
+    /// whatever size it is drawn at.
+    private func inches(_ value: Double, on sheet: CGSize) -> CGFloat {
+        CGFloat(max(0, value)) * sheet.width / 4
+    }
+
+    /// A millimetre field for a value kept in inches: paper is measured in
+    /// millimetres by everyone who has ever trimmed any.
+    private func millimetreRow(_ label: String, help: String,
+                               binding: Binding<Double>) -> some View {
+        LabeledRow(label: label, help: help) {
+            HStack(spacing: 6) {
+                TextField("", value: Binding(
+                    get: { (binding.wrappedValue * 25.4 * 10).rounded() / 10 },
+                    set: { binding.wrappedValue = max(0, min($0, 12)) / 25.4 }),
+                          format: .number.precision(.fractionLength(1)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 64)
+                Text("mm").font(.system(size: 11)).foregroundStyle(Palette.midGray)
+            }
+        }
+    }
 
     private func rect(of id: String) -> NormRect? {
         if let s = draft.slots.first(where: { $0.id == id }) { return s.rect }
@@ -1254,6 +1302,55 @@ private struct Ruler: View {
         case .pixels:  return String(Int(v.rounded()))
         case .inches:  return String(format: "%.1f", v)
         }
+    }
+}
+
+/// What the printer takes off, and what is safe from it.
+///
+/// A borderless SELPHY does not print to the edge of the paper — it prints
+/// past it. The picture is enlarged until it overhangs the sheet on all four
+/// sides and the surplus runs off, which is how there comes to be no white
+/// border; it also means the sheet that comes out is not the sheet that was
+/// composed. About two millimetres a side disappears, and the first anybody
+/// usually knows about it is a logo with its feet cut off, by which point it
+/// is on fifty prints.
+///
+/// So: the band that goes is shaded, and a dashed line marks where it is safe
+/// to put something that has to survive. Drawn over everything else, because
+/// what it is answering is a question about everything else.
+private struct TrimGuides: View {
+    let sheet: CGSize
+    /// In points on the canvas.
+    let bleed: CGFloat
+    let safe: CGFloat
+
+    var body: some View {
+        let full = CGRect(origin: .zero, size: sheet)
+        ZStack(alignment: .topLeading) {
+            if bleed > 0 {
+                // Even-odd leaves a hole where the paper survives, so the
+                // shading is only ever on the part that does not.
+                Path { p in
+                    p.addRect(full)
+                    p.addRect(full.insetBy(dx: bleed, dy: bleed))
+                }
+                .fill(Color(red: 0.98, green: 0.21, blue: 0.35).opacity(0.22),
+                      style: FillStyle(eoFill: true))
+
+                Path { p in p.addRect(full.insetBy(dx: bleed, dy: bleed)) }
+                    .stroke(Color(red: 0.98, green: 0.21, blue: 0.35).opacity(0.75),
+                            lineWidth: 1)
+            }
+            if safe > 0, safe < min(sheet.width, sheet.height) / 2 {
+                Path { p in p.addRect(full.insetBy(dx: safe, dy: safe)) }
+                    .stroke(Color.white.opacity(0.85),
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                Path { p in p.addRect(full.insetBy(dx: safe, dy: safe)) }
+                    .stroke(Palette.ink.opacity(0.45),
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 4], dashPhase: 4.5))
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
